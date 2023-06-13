@@ -1,3 +1,8 @@
+# Set-up
+library(ggplot2)
+library(dplyr)
+
+
 # Generate simulated dataset
 n.time <- 100 # Number of time points
 intervention <- round(0.8*n.time) # Time point of intervention
@@ -10,6 +15,7 @@ year.effect <- c(rep(year.effect[1:(n.time%/%12)], each = 12),
                  rep(year.effect[(n.time%%12 + 1)], each = n.time%%12))
 season.effect <- rnorm(12, 0, 1)
 season.effect <- c(rep(season.effect, n.time%/%12), season.effect[1:(n.time%%12)])
+X <- sample(c(0,1), n.id, T)
 
 # Generate the time series
 ar_process <- function(n.time, ar_params){
@@ -26,9 +32,10 @@ ar_process <- function(n.time, ar_params){
 
 
 
-# Simulate a diff and diff
+# Simulate an ITS
 df <- data.frame(
   id = rep(seq(1:n.id), each = n.time),
+  X = rep(gender, each = n.time),
   year = rep(c(rep(1:(n.time%/%12), each = 12), rep(n.time%/%12+1, n.time%%12)), 
              n.id),
   season = rep(c(rep(1:12, n.time%/%12), (1:12)[1:(n.time%%12)]), 
@@ -40,16 +47,25 @@ df <- data.frame(
   season.effect = rep(season.effect, n.id),
   post = rep(c(rep(0, intervention), rep(1, 0.2*n.time)), n.id),
   time = rep((1:n.time)-intervention, n.id),
-  error.ar = rep(ar_process(n.time, ar_params), n.id),
+  error.ar = unlist(replicate(n.id, ar_process(n.time, ar_params), simplify = F)),
   error = rep(rnorm(n.time, 0, 0.5), n.id)
 )
 
 
 df$y = with(df, constant + (0.075*time) - (0.85*post) -0.04*post*time + 
-              + year.effect + season.effect + error)
+              + year.effect + season.effect + 0.2*X + error + error.ar)
 
 
-ggplot(df, aes(y = y, x = time)) +
+# Final df
+df <- df[, c("id", "X", "year", "season", "post", "time", "y")]
+df <- data.table(df)
+
+df  %>% filter(time == 1)
+
+df  %>% 
+  group_by(time)  %>% 
+  summarise(y = mean(y))  %>% 
+  ggplot(aes(y = y, x = time)) +
   geom_line() +
   labs(x = "Time to/from the intervention",
        y = "Average y per time period") +
