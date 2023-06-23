@@ -1,6 +1,7 @@
 # Set-up
 library(ggplot2)
 library(dplyr)
+library(data.table)
 
 
 # Generate simulated dataset
@@ -35,7 +36,7 @@ ar_process <- function(n.time, ar_params){
 # Simulate an ITS
 df <- data.frame(
   id = rep(seq(1:n.id), each = n.time),
-  X = rep(gender, each = n.time),
+  X = rep(X, each = n.time),
   year = rep(c(rep(1:(n.time%/%12), each = 12), rep(n.time%/%12+1, n.time%%12)), 
              n.id),
   season = rep(c(rep(1:12, n.time%/%12), (1:12)[1:(n.time%%12)]), 
@@ -60,7 +61,8 @@ df$y = with(df, constant + (0.075*time) - (0.85*post) -0.04*post*time +
 df <- df[, c("id", "X", "year", "season", "post", "time", "y")]
 df <- data.table(df)
 
-df  %>% filter(time == 1)
+
+
 
 df  %>% 
   group_by(time)  %>% 
