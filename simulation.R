@@ -7,7 +7,7 @@ library(data.table)
 # Generate simulated dataset
 n.time <- 100 # Number of time points
 intervention <- round(0.8*n.time) # Time point of intervention
-n.id <- 45 # Number of unique individuals
+n.id <- 60 # Number of unique individuals
 constant <- 1
 order <- 12  # Replace p with the desired order of the autocorrelation
 ar_params <- c(0.5, 0.3, 0.001, 0, 0, -.050, -.020, 0, 0, 0, 0.03, 0.15)  # Replace ar1, ar2, ... with the autocorrelation parameters

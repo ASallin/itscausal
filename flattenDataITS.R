@@ -5,6 +5,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
                            id , outcome, ...) {
     
     require(tidyr)
+    require(data.table)
 
     # Vector of indices
     stopifnot(is.vector(index))

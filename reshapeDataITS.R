@@ -2,7 +2,7 @@
 #'
 #' `reshapeDataITS` prepares a panel data or time-series data for the single or multiple
 #' step forecast of counterfactuals.
-#'
+#' @INDEX is a vector 
 
 
 

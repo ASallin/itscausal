@@ -38,16 +38,33 @@ forecastITS <- function(x.train, y.train, x.test, y.test, binary = F,
     if("rf" %in% method)    {m_results <- cbind(m_results, "rf" = predict.ranger_fit(fit_rf, x.train, xnew = x.train))}
 
 
+    # Predict on test sample
     m_results_test <- matrix(nrow = nrow(x.test))
 
-    # Predict on test sample
     if("lasso" %in% method) {m_results_test <- cbind(m_results_test, "lasso" = predict.lasso_fit(fit_lasso, x.train, xnew = x.test))}
     if("lm" %in% method)    {m_results_test <- cbind(m_results_test, "lm" = predict.lm_fit(fit_lm, x.train, xnew = x.test))}
     if("rf" %in% method)    {m_results_test <- cbind(m_results_test, "rf" = predict.ranger_fit(fit_rf, x.train, xnew = x.test))}
 
-    list_results <- list("y.train" = m_results[,-1],
-                         "y.test"  = m_results_test[,-1]
-    )
+
+    # Compute the weighting that minimizes RMSE
+    diag_rmse <- ensemble(predictors = m_results_test, 
+                          k = length(method), 
+                          y = y.test)
+
+    y.test.weight <- diag_rmse$weighted.yhat
+
+    # Return
+    models <- list(if (exists("fit_lasso")) list(fit_lasso, "attr" = "lasso"),
+                   if (exists("fit_lm"))    list(fit_lm, "attr" = "lm"),
+                   if (exists("fit_rf"))    list(fit_rf, "attr" = "rf")
+                   )
+
+    models <- models[lengths(models) != 0]
+
+    list_results <- list("y.test.weight" = y.test.weight,
+                         "weights" = diag_rmse$RMSEweights,
+                         "models" = models
+                        )
 
     return(list_results)
 
