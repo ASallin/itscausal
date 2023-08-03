@@ -13,7 +13,10 @@ stepcast <- function(models, x.test, STEPS = 1L,
       }
     )
     prediction <- do.call(cbind, prediction)
-    prediction <- prediction[, names(RMSEweights)] %*% as.vector(RMSEweights)
+
+    if(length(RMSEweights) > 1){
+        prediction <- prediction[, names(RMSEweights)] %*% as.vector(RMSEweights)
+    }
     
     # Update the dataframe for new prediction
     b <- colnames(x.test)
@@ -28,7 +31,7 @@ stepcast <- function(models, x.test, STEPS = 1L,
                 "newDF" = new.x))
 }
 
-stepPredictions <- matrix(nrow = nrow(y.test),
+stepPredictions <- matrix(nrow = nrow(x.test),
                           ncol = STEPS)
 
 for (jj in 1:STEPS){

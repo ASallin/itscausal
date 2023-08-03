@@ -15,6 +15,13 @@ ensemble <- function(predictors, k, y = NULL, RMSEweights = NULL){
   if (!is.null(RMSEweights)){y <- NULL}
   if (!is.null(y)){y <- as.matrix(y)}
 
+  if(k == 1){
+    message("Only one prediction: no ensemble needed.")
+    return(list("weighted.yhat" = predictors,
+                "RMSE.methods" = "",
+                "RMSEweights" = 1))
+    } 
+
   # Compute MSE for each column of methods (for information)
   if(is.null(RMSEweights)){
     MSE.method <- apply(predictors, MARGIN = 2, error, y = y) 
