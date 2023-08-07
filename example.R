@@ -7,118 +7,44 @@ library(purrr)
 
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/simulation.R")
 data = df
-# WINDOW = 12L
-# covariates_time = c("year", "season")
-# covariates_fix = c("X", "cv")
-# outcome = "y"
-# id = "id"
-# time = "time"
-# index = c(1:10)
-# INDEX = 1
-# STEPS = 5L
+WINDOW = 12L
+covariates_time = c("year", "season")
+covariates_fix = c("X")
+outcome = "y"
+id = "id"
+time = "time"
+INDEX = 0L
+STEPS = 5L
 
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/flattenDataITS.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/crossValidateITS.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/lm_fit.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/lasso_fit.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/ranger_fit.R")
-source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/forecastITS.R")
+source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/fit.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/ensembleLearnerITS.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/rmse.R")
 source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/stepcastITS.R")
+source("C:/Users/ASallin/OneDrive - SWICA Krankenversicherung AG/its/forecastITS.R")
 
-K <- 5
-data[, "cv"] <- crossValidateITS(data, id = "id", k = K)
+#' TO DO
+#' 1) So far, I measure accuracy for one period after ("one-step forecast"). However, it could 
+#' be more relevant to test for accuracy N periods after ("multi-step forecast"). See 
+#' https://otexts.com/fpp2/accuracy.html for more details
+#' Maybe add a t + 4 y in the test session and check RMSE. 
+#' 2) Add some summary on the RMSE in the output of the function
+#' 3) 
 
-i <- 2
+fore <- forecastITS(data, time = "time", INDEX = 0L, WINDOW = 12L, covariates_time = c("year", "season"), 
+            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf"), 
+            K = 5)
 
-steps = 20L
-window = 12L
-
-# Test
-forecast <- list()
-
-for (i in 1:K){
-
-    message(i, "...")
-
-    a <- flattenDataITS(data = data, 
-                        index = c(1:10), 
-                        WINDOW = window,
-                        STEPS = steps,
-                        time = "time",
-                        covariates_time = c("year", "season"), 
-                        covariates_fix = c("X", "cv"),
-                        id = "id", 
-                        outcome = "y")
-    
-    x.train  = a[cv != i, -c("ID", "time", "cv", "y")]
-    x.test   = a[cv == i, -c("ID", "time", "cv", "y")]
-    y.train  = a[cv != i, "y"] 
-    y.test   = a[cv == i, "y"]
-
-    results <- forecastITS(x.train  = x.train, 
-                           x.test   = x.test, 
-                           y.train  = y.train, 
-                           y.test   = y.test,
-                           method   = c("rf", "lm"))
-
-    # Predict for future
-    pred <- flattenDataITS(data = data[cv == i,], 
-                    index = c(0:-15), 
-                    WINDOW = window,
-                    STEPS = steps,
-                    time = "time",
-                    covariates_time = c("year", "season"), 
-                    covariates_fix = c("X", "cv"),
-                    id = "id", outcome = "y")
-
-    x.pred   = pred[, -c("ID", "time", "cv", "y")]
-
-    prediction <- stepcast(models = results$models, 
-                           x.test = x.pred,
-                           STEPS = steps, 
-                           RMSEweights = results$weights)
-
-    colnames(prediction) <- paste0("LEAD", 1:steps)
-
-    test <- cbind(prediction, pred[,c("ID", "time")])
-    
-    list_predictions <- split(test, test$time)
-
-
-    flattenPrediction <- function(x){
-      colnames(x)[1:steps] <- paste0("PRED", 1:steps + as.numeric(unique(x$time))) 
-      return(x)
-    }
-    list_predictionsT <- lapply(list_predictions, flattenPrediction)
-    list_predictionsT <- rbindlist(list_predictionsT, fill = TRUE)
-    list_predictionsT <- setcolorder(list_predictionsT, c("ID", "time"))
-    
-    predicted <- list_predictionsT[,lapply(.SD, mean, na.rm=TRUE),  
-                                    by = c("ID")][, -"time"]
-
-    predicted <-melt(predicted, id.vars = c('ID'), variable.name = "time", 
-                      value.name = "prediction")
-
-    predicted <- predicted[, time := (gsub("PRED", "", time))]
-    predicted <- predicted[, time := as.numeric(time)]
-    
-    return_list <- list(list_predictions, list_predictionsT, predicted)
-    
-    forecast[[i]] <- return_list
-
-}
-
-dfPred <- do.call(rbind, lapply(forecast, function(x) x[[3]]))
-dfPred[order(time, ID), ]
-
-dfFinal <- left_join(df, dfPred, by = c("id"="ID", "time"))
-
+dfFinal <- fore$out
 
 dfFinal  %>% 
+  right_join(data)  %>% 
   group_by(time)  %>% 
-  summarise(y = mean(y), y.pred = mean(prediction))  %>% 
+  summarise(y = mean(y), y.pred = mean(y_hat))  %>% 
   ggplot(aes(y = y, x = time)) +
   geom_line() +
   geom_line(aes(y = y.pred, x = time), color = "red") +
@@ -130,13 +56,14 @@ dfFinal  %>%
 
 
 # Now we need a way to compute the ITE
+forecast.object <- fore
 
-ite <- function(data, forecast){
+ite <- function(data, forecast.object){
 
   # Aggregate forecast
-  forecastITS <- do.call(rbind, lapply(forecast, function(x) x[[2]]))
+  fit <- do.call(rbind, lapply(forecast.object$forecast, function(x) x[[2]]))
   
-  t <-melt(forecastITS, id.vars = c('ID', "time"), variable.name = "PRED", 
+  t <-melt(fit, id.vars = c('ID', "time"), variable.name = "PRED", 
                       value.name = "prediction")
   t <- t[, time := (gsub("PRED", "", PRED))]
   t <- t[, time := as.numeric(time)]
@@ -144,7 +71,7 @@ ite <- function(data, forecast){
   t <- na.omit(t)
   t$pred <- 1
 
-  m <- left_join(df, t, by =  c("id"="ID", "time"), multiple = "all") 
+  m <- left_join(data, t, by =  c("id"="ID", "time"), multiple = "all") 
   m <- na.omit(m)
 
   m <- m[, ite := prediction - y]
@@ -158,8 +85,14 @@ ite <- function(data, forecast){
   return(list(ites = iteM))
   }
 
+iteM <- ite(data = df, forecast = forecast)[[1]]
+
 # One possible aggregation: per time period
-  iteMT <- iteM[, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c("time")]
+iteMT <- iteM[, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c("time")]
+iteM1 <- iteM[time == 1, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c("time")]
+ate1
+iteM5 <- mean(iteM[time %in% c(1:4), ite])
+ate5
 
 # Per time and per control group
 iteMCT <- iteM[, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c("time", "X")]
@@ -174,6 +107,9 @@ ggplot(iteMCT, aes(x = time, y = ite, fill = as.factor(X))) +
 mean(iteM$ite); sd(iteM$ite)  
 
 
+
+
+# Fable
 pacman::p_load(fable, feasts, tsibble, tsibbledata)
 
 install.packages("tsibble")
@@ -196,6 +132,37 @@ library(lubridate)
 fit
 model(fit, fit = TSLM(y ~ trend() + season()))  %>% 
   forecast(h = 7)
+
+
+
+a <- flattenDataITS(data = data, 
+                        index = c(1:10), 
+                        WINDOW = window,
+                        STEPS = steps,
+                        time = "time",
+                        covariates_time = c("year", "season"), 
+                        covariates_fix = c("X", "cv"),
+                        id = "id", 
+                        outcome = "y")
+    
+x.train  = a[cv != 3, -c("time", "cv")][order(ID),]
+
+ts.train <- x.train[, .(year, season, y, ID)]
+ts.train <- ts.train[, date := make_yearmonth(year = year, month = season)]
+ts.train <- tsibble(ts.train, key = ID , index = date)  
+
+fit.train <- model(ts.train, fit = TSLM(y ~ trend() + season()))  
+
+x.test  = a[cv == 3, -c("time", "cv")][order(ID),]
+ts.test <- x.test[, .(year, season, y, ID)]
+ts.test <- ts.test[, date := make_yearmonth(year = year, month = season)]
+ts.test <- tsibble(ts.test, key = ID , index = date)  
+
+
+forecast(fit.train, new_data = ts.test)
+         h = 7)
+
+
 
 
 fit <- ts.train %>%

@@ -2,7 +2,7 @@
 flattenDataITS <- function(data, index, WINDOW, STEPS, 
                            time, covariates_time, 
                            covariates_fix, 
-                           id , outcome) {
+                           key , outcome) {
     
     require(tidyr)
     require(data.table)
@@ -19,7 +19,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
     
     data <- setnames(data, time, "time")
     data <- setnames(data, outcome, "y")
-    data <- setnames(data, id, "ID")
+    data <- setnames(data, key, "ID")
 
     selectCols <- c("ID", "time", "y", covariates_time, covariates_fix)
     dataT <- data[, ..selectCols]

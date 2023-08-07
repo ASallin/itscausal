@@ -54,8 +54,12 @@ df <- data.frame(
   error = rep(rnorm(n.time, 0, 0.5), n.id)
 )
 
-df$y = with(df, constant + 0.075*(time + abs(min(df$time))) - (0.085*post) -0.04*post*(time + abs(min(df$time))) + 
-              + year.effect + season.effect + 0.2*X + error + error.ar)
+# Program y as a function of time and of post*time
+df$y = with(df, 
+            constant + 0.075*(time + abs(min(df$time))) 
+            - (0.085*post) # effect at the cutoff
+            - 0.04*post*(time + abs(min(df$time))) # slope after the cutoff
+            + year.effect + season.effect + 0.2*X + error + error.ar)
 
 
 # Final df
@@ -63,13 +67,30 @@ df <- df[, c("id", "X", "year", "season", "post", "time", "y")]
 df <- data.table(df)
 
 
-# Graph
+df <- df[, model := constant + 0.075* (time + abs(min(df$time)))]
+df <- df[, forecast := constant + 0.075*(time + abs(min(df$time))) 
+            -  0.085 - 0.04*(time + abs(min(df$time)))]
+df <- df[, ite := ifelse(post == 0, NA, model-forecast)]
+ate5 <- mean(df[time < 5 & post == 1, ]$ite)
+ate1 <- mean(df[time < 2 & post == 1, ]$ite)
 
+print(ate5)
+print(ate1)
+
+# Graph
 df  %>% 
-  group_by(time)  %>% 
+  group_by(time, post)  %>% 
   summarise(y = mean(y))  %>% 
   ggplot(aes(y = y, x = time)) +
   geom_line() +
+  geom_line(aes(x = time, y = constant + 0.075* (time + abs(min(df$time)))),
+            col = "red") +
+  geom_line(aes(x = time, 
+                y = ifelse(time < 1, NA, 
+                constant + 0.075* (time + abs(min(df$time)))
+                - (0.085*post)
+                - 0.04*post*(time + abs(min(df$time))))),
+            col = "blue") +
   labs(x = "Time to/from the intervention",
        y = "Average y per time period") +
   geom_vline(xintercept = 0, color = "red", linetype = 2) +
