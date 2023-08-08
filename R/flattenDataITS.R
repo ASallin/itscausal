@@ -1,11 +1,25 @@
 
-flattenDataITS <- function(data, index, WINDOW, STEPS, 
-                           time, covariates_time, 
-                           covariates_fix, 
+#' flattenDataITS
+#'
+#' @param data
+#' @param index
+#' @param WINDOW
+#' @param STEPS
+#' @param time
+#' @param covariates_time
+#' @param covariates_fix
+#' @param key
+#' @param outcome
+#'
+#' @return
+#' @export
+#'
+#' @examples
+flattenDataITS <- function(data, index, WINDOW, STEPS,
+                           time, covariates_time,
+                           covariates_fix,
                            key , outcome) {
-    
-    require(tidyr)
-    require(data.table)
+
 
     if(!is.integer(WINDOW)){stop("`WINDOW` must be an integer.")}
     if(!is.integer(STEPS)){stop("`STEPS` must be an integer.")}
@@ -16,7 +30,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
 
     # Change names
     data <- data.table(data)
-    
+
     data <- setnames(data, time, "time")
     data <- setnames(data, outcome, "y")
     data <- setnames(data, key, "ID")
@@ -24,12 +38,12 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
     selectCols <- c("ID", "time", "y", covariates_time, covariates_fix)
     dataT <- data[, ..selectCols]
 
-    
+
     # Function to reshape
-    reshapeDataITS <- function(index, WINDOW, STEPS, data, 
+    reshapeDataITS <- function(index, WINDOW, STEPS, data,
                                 covariates_fix,
                                 covariates_time){
-                        
+
         # Keep observations with dates earlier than index but later than index - past_window
         dataWindow <- data[time <= -(index + STEPS) & (time >= (-(index + STEPS) - WINDOW)), ]
 
@@ -37,7 +51,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
         dfaw <- if(is.null(covariates_fix)) {
             dcast(dataWindow, ID ~ time, value.var = "y")
         } else {
-            dcast(dataWindow, as.formula(paste(" ID +", paste(covariates_fix, collapse = " + "), "~", time )), 
+            dcast(dataWindow, as.formula(paste(" ID +", paste(covariates_fix, collapse = " + "), "~", time )),
                   value.var = "y")
         }
 
@@ -47,12 +61,12 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
         dfaw <- cbind(dfaw, data[time == -(index + STEPS), ..selectCols])
 
         # Return
-        return(dfaw) 
+        return(dfaw)
     }
-    
+
 
     # Reshape for each level of index
-    dataFull <- lapply(index, reshapeDataITS, 
+    dataFull <- lapply(index, reshapeDataITS,
                         data = dataT, WINDOW = WINDOW, STEPS = STEPS,
                         covariates_time = covariates_time, covariates_fix = covariates_fix)
     dataFull <- do.call(rbind, dataFull)

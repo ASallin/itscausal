@@ -1,23 +1,40 @@
-# Multi-step forecasting function
-fit <- function(x.train, y.train, x.test, y.test, binary = F, 
-                        method = c("lasso", "lm", "rf")){
-    
+#' Multi-step forecasting function
+#'
+#' @param x.train the matrix of predictors from the train dataset
+#' @param y.train the vector of target variable from the train dataset
+#' @param x.test the matrix of predictors from the test dataset
+#' @param y.test the vector of target variable from the test dataset
+#' @param binary binary variable indicating whether the target `y` is a binary
+#' variable. If yes, ...
+#' @param method vector of method names. Methods available are "lm", "rf", "lasso".
+#' 
+#' @import data.table 
+#' 
+#' @return
+#' @export
+#'
+#' @examples
+
+
+fit <- function(x.train, y.train, x.test, y.test,
+                binary = F, method = c("lasso", "lm", "rf")){
+
     # method <- match.arg(method)
     if(binary == T){family <- "binomial"} else {family <- "gaussian"}
-  
+
     x.train <- data.matrix(x.train)
     x.test  <- data.matrix(x.test)
     y.train <- data.matrix(y.train)
     y.test  <- data.matrix(y.test)
 
     # Arguments
-    args.lasso <- 
+    args.lasso <-
       list(penalty = "lasso",
            alpha = 1,
            ncores = parallel::detectCores(),
            output.time = T)
 
-    args.rf <- 
+    args.rf <-
       list(respect.unordered.factors = "order",
            num.trees = 2000,
            classification = FALSE,
@@ -32,7 +49,7 @@ fit <- function(x.train, y.train, x.test, y.test, binary = F,
 
     # Predict on train sample
     m_results <- matrix(nrow = nrow(x.train))
-    
+
     if("lasso" %in% method) {m_results <- cbind(m_results, "lasso" = predict.lasso_fit(fit_lasso, x.train, xnew = x.train))}
     if("lm" %in% method)    {m_results <- cbind(m_results, "lm" = predict.lm_fit(fit_lm, x.train, xnew = x.train))}
     if("rf" %in% method)    {m_results <- cbind(m_results, "rf" = predict.ranger_fit(fit_rf, x.train, xnew = x.train))}
@@ -47,8 +64,8 @@ fit <- function(x.train, y.train, x.test, y.test, binary = F,
 
 
     # Compute the weighting that minimizes RMSE
-    diag_rmse <- ensemble(predictors = m_results_test, 
-                          k = length(method), 
+    diag_rmse <- ensemble(predictors = m_results_test,
+                          k = length(method),
                           y = y.test)
 
     y.test.weight <- diag_rmse$weighted.yhat
