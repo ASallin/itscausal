@@ -2,9 +2,7 @@
 % Please edit documentation in R/forecastITS.R
 \name{forecastITS}
 \alias{forecastITS}
-\title{Forecast function for ITS
-Main function for the ITS. Uses cross-validation to perform "sliding-window" in
-single-step or multiple-step estimation of time series.}
+\title{Forecast function for ITS}
 \usage{
 forecastITS(
   data,
@@ -56,7 +54,6 @@ Possible methods are c("lm", "rf").}
 Default is K = 5.}
 }
 \description{
-Forecast function for ITS
 Main function for the ITS. Uses cross-validation to perform "sliding-window" in
 single-step or multiple-step estimation of time series.
 }

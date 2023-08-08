@@ -1,13 +1,14 @@
-# RF with Ranger ----------------------------------------------------------
-
 #' This function estimates random forest lasso regression based on the \code{\link{ranger}} package
 #'
 #' @param x Matrix of covariates (number of observations times number of covariates matrix)
 #' @param y vector of outcomes (no df format)
 #' @param args List of arguments passed to  \code{\link{ranger}}
 #' @import ranger
+#' 
+#' @return
+#' @export
 #'
-#' @return An object with S3 class "ranger"
+#' @examples
 #'
 #' @keywords internal
 

@@ -12,3 +12,4 @@ stepcastITS(models, x.test, STEPS = 1L, RMSEweights)
 \description{
 stepcastITS
 }
+\keyword{internal}

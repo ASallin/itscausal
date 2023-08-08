@@ -2,9 +2,7 @@
 % Please edit documentation in R/ensembleLearnerITS.r
 \name{ensemble}
 \alias{ensemble}
-\title{Ensemble learner function
-computes a grid search of all possible weights that minimizes the RMSE within
-each K folds. See Chernozhukov et al. for implementation.}
+\title{Ensemble learner function}
 \usage{
 ensemble(predictors, k, y = NULL, RMSEweights = NULL)
 }
@@ -15,9 +13,12 @@ ensemble(predictors, k, y = NULL, RMSEweights = NULL)
 computation.}
 
 \item{y}{is the observed y. Set to NULL if a vector of weights is given.}
+
+\item{RMSEweights}{is a vector of weights for the minimization of RMSE. Could be used
+if for example the RMSE minimizing weights were previously computed on a training
+dataset.}
 }
 \description{
-Ensemble learner function
 computes a grid search of all possible weights that minimizes the RMSE within
 each K folds. See Chernozhukov et al. for implementation.
 }

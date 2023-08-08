@@ -13,9 +13,6 @@ lm_fit(x, y, args = list())
 
 \item{args}{List of arguments passed to  \code{\link{ranger}}}
 }
-\value{
-An object with S3 class "ranger"
-}
 \description{
 This function estimates random forest lasso regression based on the \code{\link{ranger}} package
 }

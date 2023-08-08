@@ -1,13 +1,19 @@
 #' Ensemble learner function
+#' 
 #' computes a grid search of all possible weights that minimizes the RMSE within
 #' each K folds. See Chernozhukov et al. for implementation.
 #' @param predictors is a matrix of predictors
 #' @param k is the number of predictors that should be included in the learning
 #' computation.
 #' @param y is the observed y. Set to NULL if a vector of weights is given.
-#' @RMSEweights is a vector of weights for the minimization of RMSE. Could be used
+#' @param RMSEweights is a vector of weights for the minimization of RMSE. Could be used
 #' if for example the RMSE minimizing weights were previously computed on a training
 #' dataset.
+#' @return
+#' @export
+#'
+#' @examples
+
 
 ensemble <- function(predictors, k, y = NULL, RMSEweights = NULL){
 

@@ -6,12 +6,15 @@
 #' @param y.test the vector of target variable from the test dataset
 #' @param binary binary variable indicating whether the target `y` is a binary
 #' variable. If yes, ...
+#' 
 #' @param method vector of method names. Methods available are "lm", "rf", "lasso".
 #' 
 #' @import data.table 
 #' 
 #' @return
 #' @export
+#' 
+#' @keywords internal
 #'
 #' @examples
 

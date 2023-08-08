@@ -1,4 +1,5 @@
 #' Forecast function for ITS
+#' 
 #' Main function for the ITS. Uses cross-validation to perform "sliding-window" in
 #' single-step or multiple-step estimation of time series.
 #' @param data data is in long format (multiple rows per key)
@@ -24,6 +25,11 @@
 #' Default is K = 5.
 #' 
 #' @import stats
+#' @return
+#' @export
+#'
+#' @examples
+
 
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
                         covariates_time, covariates_fix,

@@ -30,3 +30,4 @@ variable. If yes, ...}
 \description{
 Multi-step forecasting function
 }
+\keyword{internal}

@@ -2,7 +2,7 @@
 % Please edit documentation in R/ranger_fit.r
 \name{ranger_fit}
 \alias{ranger_fit}
-\title{This function estimates random forest lasso regression based on the \code{\link{ranger}} package}
+\title{ranger_fit}
 \usage{
 ranger_fit(x, y, args = list())
 }
