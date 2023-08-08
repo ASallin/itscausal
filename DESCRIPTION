@@ -1,0 +1,23 @@
+Package: itscausal
+Title: Interrupted Time Series for Causal Estimation
+Version: 0.0.0.9000
+Authors@R: 
+    person("Aurelien", "Sallin", , "aurelien.sallin@protonmail.com", role = c("aut", "cre"),
+           comment = c(ORCID = "YOUR-ORCID-ID"))
+Description: This package performs single- and multiple-steps forecasting for
+    estimating causal effects using time series. It relies on machine learning 
+    methods for prediction with crossfitting and ensemble learning.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.2.3
+Imports:
+    ranger,
+    data.table,
+    stats
+Suggests: 
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
+URL: https://github.com/ASallin/itscausal
+BugReports: https://github.com/ASallin/itscausal/issues
+
