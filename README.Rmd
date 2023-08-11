@@ -40,6 +40,8 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
+set.seed(234598)
+
 # Simulate a time series
 
 # Generate simulated dataset

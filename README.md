@@ -29,6 +29,8 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
+set.seed(234598)
+
 # Simulate a time series
 
 # Generate simulated dataset
@@ -168,11 +170,11 @@ ggplot(InstATE$pred, aes(x = time, y = ite)) +
 ``` r
 ate1its <- ateITS(fore, iteM, n.periods = 1)
 paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
-#> [1] "mean =  -0.144 ; sd =  1.443"
+#> [1] "mean =  2.446 ; sd =  1.402"
 
 ate5its <- ateITS(fore, iteM, n.periods = 5)
 paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
-#> [1] "mean =  1.544 ; sd =  1.696"
+#> [1] "mean =  2.684 ; sd =  1.447"
 
 ate1
 #> [1] 3.285
