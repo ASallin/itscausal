@@ -107,7 +107,7 @@ df <- df[, model := constant + 0.075* (time + abs(min(df$time)))]
 df <- df[, forecast := constant + 0.075*(time + abs(min(df$time))) 
             -  0.085 - 0.04*(time + abs(min(df$time)))]
 df <- df[, ite := ifelse(post == 0, NA, model-forecast)]
-ate5 <- mean(df[time < 5 & post == 1, ]$ite)
+ate5 <- mean(df[time < 6 & post == 1, ]$ite)
 ate1 <- mean(df[time < 2 & post == 1, ]$ite)
 
 print(ate5)
@@ -164,3 +164,31 @@ dfFinal  %>%
   theme_classic()
 ```
 
+```{r ite}
+# Now we need a way to compute the ITE
+iteM <- iteITS(forecast = fore)
+```
+
+
+## Compute the instantaneous treatment effect for the whole population
+```{r InstATE}
+InstAte = ateITS(fore, iteM)
+InstATE <- InstAte$InstATE
+
+ggplot(InstATE$pred, aes(x = time, y = ite)) +
+  geom_bar(stat= "identity")
+```
+
+
+## Per group
+```{r ate}
+
+ate1its <- ateITS(fore, iteM, n.periods = 1)
+paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
+
+ate5its <- ateITS(fore, iteM, n.periods = 5)
+paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
+
+ate1
+ate5
+```
