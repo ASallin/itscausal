@@ -67,4 +67,8 @@ df   <- data.frame(id, time, year, y)
 f <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
                 y = "y")
 
+# Unbalanced panel
+dfUB <- df[sample(1:250, 230), ]
+fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
+                y = "y")
 }

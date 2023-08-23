@@ -38,8 +38,26 @@
 #' f <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
 #'                 y = "y")
 #' 
+#' # Unbalanced panel
+#' dfUB <- df[sample(1:250, 230), ]
+#' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
+#'                 y = "y")
 
-
+# time <- rep(c(1:50), 5)
+#  id   <- rep(1:5, each = 50)
+#  year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
+#  y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
+#  df   <- data.frame(id, time, year, y)
+#  df <- df[sample(1:250, 230), ]
+# data = df
+# time = "time"
+# INDEX = 40
+# covariates_time = c("year")
+# key = "id"
+# y = "y"
+# WINDOW = 12L
+# STEPS = as.integer(WINDOW/3)
+# covariates_fix = NULL
 
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
                         covariates_time, covariates_fix = NULL,
@@ -55,19 +73,27 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
   if(is.null(covariates_fix)) {vars <- c(time, y, key, covariates_time)
     } else {vars <- c(time, y, key, covariates_fix, covariates_time)}
 
-  # Prepare data
-  data <- data.table(data)
-
   if (!all(vars %in% colnames(data))) {
     stop("Some variables are not found in the data.")
   }
+  
+  # Prepare data
+  data <- data.table(data)
   data <- data[, ..vars]
   data <- data[, time := time - INDEX]
 
+  if (nrow(na.omit(data)) != nrow(data)) {
+    stop("NAs have been found. Please remove.")
+  }
+
+  # Check whether balanced panel
+  if(min(data[, .N, by = key]$N) !=  length(unique(data$time))){
+    warning("It seems that you don't have a balanced panel. Please have a look at your df.")
+    data <- expandITS(data, key, y, time, covariates_time, covariates_fix)
+  }
 
   # Number of forecast units
   if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data$time) + steps
-
 
   # Prepare folds for cross-validation
   data[, "cv"] <- crossValidateITS(data, id = key, k = K)
