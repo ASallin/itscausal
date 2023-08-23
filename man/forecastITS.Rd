@@ -11,7 +11,7 @@ forecastITS(
   WINDOW = 12L,
   STEPS = as.integer(WINDOW/3),
   covariates_time,
-  covariates_fix,
+  covariates_fix = NULL,
   key,
   y,
   method = c("lm", "rf"),

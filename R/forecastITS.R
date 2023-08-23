@@ -32,7 +32,7 @@
 
 
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
-                        covariates_time, covariates_fix,
+                        covariates_time, covariates_fix = NULL,
                         key, y, method = c("lm", "rf"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
 
 
@@ -41,7 +41,9 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
   # Preparation
   window <- WINDOW
   steps  <- STEPS
-  vars <- c(time, y, key, covariates_fix, covariates_time)
+
+  if(is.null(covariates_fix)) {vars <- c(time, y, key, covariates_time)
+    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}
 
   # Prepare data
   data <- data.table(data)
@@ -72,7 +74,10 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
                           STEPS = steps,
                           time = time,
                           covariates_time = covariates_time,
-                          covariates_fix = c(covariates_fix, "cv"),
+                          covariates_fix = ifelse(is.null(covariates_fix), 
+                                                  c("cv"),
+                                                  c(covariates_fix, "cv")
+                                                  ),
                           key = key,
                           outcome = y)
 
@@ -94,7 +99,10 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
                            STEPS = steps,
                            time = time,
                            covariates_time = covariates_time,
-                           covariates_fix = c(covariates_fix, "cv"),
+                           covariates_fix = ifelse(is.null(covariates_fix), 
+                                                  c("cv"),
+                                                  c(covariates_fix, "cv")
+                                                  ),
                            key = key, outcome = y)
 
     x.pred   = pred[, -c("ID", "time", "cv", "y")]
