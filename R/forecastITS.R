@@ -43,22 +43,6 @@
 #' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
 #'                 y = "y")
 
-# time <- rep(c(1:50), 5)
-#  id   <- rep(1:5, each = 50)
-#  year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
-#  y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
-#  df   <- data.frame(id, time, year, y)
-#  df <- df[sample(1:250, 230), ]
-# data = df
-# time = "time"
-# INDEX = 40
-# covariates_time = c("year")
-# key = "id"
-# y = "y"
-# WINDOW = 12L
-# STEPS = as.integer(WINDOW/3)
-# covariates_fix = NULL
-
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
                         covariates_time, covariates_fix = NULL,
                         key, y, method = c("lm", "rf"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {

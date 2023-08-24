@@ -12,7 +12,7 @@
 #' @param key is the key that identifies units of observations.
 #' @param y is a string indicating the series.
 #' 
-#' @import stats, tidyr
+#' @import stats
 #' @return
 #' @export
 #'

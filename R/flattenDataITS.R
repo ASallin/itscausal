@@ -1,9 +1,9 @@
 
 #' flattenDataITS
 #'
-#' @param data
-#' @param index
-#' @param WINDOW
+#' @param data Dataset
+#' @param index Index for intervention
+#' @param WINDOW Window for prediction
 #' @param STEPS
 #' @param time
 #' @param covariates_time

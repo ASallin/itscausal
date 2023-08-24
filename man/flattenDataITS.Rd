@@ -17,6 +17,12 @@ flattenDataITS(
 )
 }
 \arguments{
+\item{data}{Dataset}
+
+\item{index}{Index for intervention}
+
+\item{WINDOW}{Window for prediction}
+
 \item{outcome}{}
 }
 \description{
