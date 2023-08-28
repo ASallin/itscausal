@@ -30,30 +30,23 @@
 expandITS <- function(data, key, y, time, covariates_time = NULL, 
                       covariates_fix = NULL){
     
-    # Cosmetics for expand
-    template <- data
-    data <- data.table(data)
-    template <- setnames(template, time, "TIME_expand")
-    template <- setnames(template, key, "ID_expand")
-    #   template <- tidyr::expand(as.data.frame(data), tidyr::nesting(key, time))
-    template <- tidyr::expand(as.data.frame(template), ID_expand, TIME_expand)
-    template <- setnames(template, "TIME_expand", time)
-    template <- setnames(template, "ID_expand", key)
+  # Use the dplyr .data[[name]] operator
+  template <- tidyr::expand(as.data.frame(data), .data[[key]], .data[[time]])
 
   if(!is.null(covariates_time)) {
     time_invariant <- c(covariates_time, time)
-    template <- left_join(template, distinct(data[, ..time_invariant]))
+    template <- left_join(template, distinct(data[, time_invariant]))
   }
 
   if(!is.null(covariates_fix)) {
     ind_invariant  <- c(covariates_fix, key)
-    template <- left_join(template, distinct(data[, ..ind_invariant]))
+    template <- left_join(template, distinct(data[, ind_invariant]))
   }
 
   # Fill in missing observations with 0
-  balanced_panel <- left_join(template, data) %>%
-      mutate(y = ifelse(is.na(y), 0, y))  %>% 
-      data.table()
+  balanced_panel <- left_join(template, data) 
+  balanced_panel[[y]] <-  ifelse(is.na(balanced_panel[[y]]), 0, balanced_panel[[y]])
+  balanced_panel <- data.table(balanced_panel)
 
   return(balanced_panel)
 }

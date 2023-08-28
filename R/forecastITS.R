@@ -35,7 +35,7 @@
 #' year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
 #' y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
 #' df   <- data.frame(id, time, year, y)
-#' f <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
+#' f    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
 #'                 y = "y")
 #' 
 #' # Unbalanced panel
@@ -89,15 +89,14 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     message(i, "...")
 
     dat <- flattenDataITS(data = data,
-                          index = c(0:window),
+                          index = c(0:(window - steps)),
                           WINDOW = window,
                           STEPS = steps,
                           time = time,
                           covariates_time = covariates_time,
-                          covariates_fix = ifelse(is.null(covariates_fix), 
-                                                  c("cv"),
-                                                  c(covariates_fix, "cv")
-                                                  ),
+                          covariates_fix = if(is.null(covariates_fix)) {
+                                              c("cv")
+                                            } else {c(covariates_fix, "cv")}, 
                           key = key,
                           outcome = y)
 
@@ -119,10 +118,9 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
                            STEPS = steps,
                            time = time,
                            covariates_time = covariates_time,
-                           covariates_fix = ifelse(is.null(covariates_fix), 
-                                                  c("cv"),
-                                                  c(covariates_fix, "cv")
-                                                  ),
+                           covariates_fix = if(is.null(covariates_fix)) {
+                                              c("cv")
+                                            } else {c(covariates_fix, "cv")},
                            key = key, outcome = y)
 
     x.pred   = pred[, -c("ID", "time", "cv", "y")]
@@ -148,10 +146,12 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     list_predictionsT <- setcolorder(list_predictionsT, c("ID", "time"))
 
     # HERE: FLAG! We take the mean of all predictions per time period.
-    predicted <- list_predictionsT[,lapply(.SD, mean, na.rm=TRUE),
+    # HERE: FLAG! We take the median of all predictions per time period.
+    # Here: use post intervention periods for weighting of predictions!
+    predicted <- list_predictionsT[,lapply(.SD, median, na.rm=TRUE),
                                    by = c("ID")][, -"time"]
 
-    predicted <-melt(predicted, id.vars = c('ID'), variable.name = "time",
+    predicted <- melt(predicted, id.vars = c('ID'), variable.name = "time",
                      value.name = "prediction")
 
     predicted <- predicted[, time := (gsub("PRED", "", time))]
