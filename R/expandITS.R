@@ -29,7 +29,9 @@
 
 expandITS <- function(data, key, y, time, covariates_time = NULL, 
                       covariates_fix = NULL){
-    
+  
+  data <- as.data.frame(data)
+  
   # Use the dplyr .data[[name]] operator
   template <- tidyr::expand(as.data.frame(data), .data[[key]], .data[[time]])
 

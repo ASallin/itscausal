@@ -14,7 +14,7 @@ forecastITS(
   covariates_fix = NULL,
   key,
   y,
-  method = c("lm", "rf"),
+  method = c("lm", "rf", "xgboost"),
   K = 5,
   CYCLE = 12L,
   FORECASTUNITS = NULL

@@ -15,10 +15,6 @@
 #'                    "gender" = sample(c(0,1), 1000, TRUE),
 #'                    "region" = sample(1:5, 1000, TRUE)
 #'                    )
-#' x <- policyrate(var = "y", time.var = "year", pop.group = "age", policy.group = "region",
-#'                 data = data)
-#' subset(x, "year==1")
-#'
 #'
 #' @export
 

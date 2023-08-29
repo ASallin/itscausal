@@ -45,7 +45,7 @@
 
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
                         covariates_time, covariates_fix = NULL,
-                        key, y, method = c("lm", "rf"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
+                        key, y, method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
 
 
   cv = ID = rbindlist = NULL # due to NSE notes in R CMD check
@@ -126,9 +126,10 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     x.pred   = pred[, -c("ID", "time", "cv", "y")]
 
     prediction <- stepcastITS(models = results$models,
-                           x.test = x.pred,
+                           x = x.pred,
                            STEPS = steps,
-                           RMSEweights = results$weights)
+                           RMSEweights = results$weights,
+                           covariates_time = covariates_time)
 
     colnames(prediction) <- paste0("LEAD", 1:steps)
 
@@ -176,6 +177,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     "forecast" = forecast,
     "out" = dfPred,
     "data" = data,
+    "RMSEweights" = results$weights,
     "call" = list("time" = time,
                   "INDEX" = INDEX,
                   "WINDOW" = WINDOW,

@@ -1,7 +1,7 @@
 #' stepcastITS
 #'
 #' @param models
-#' @param x.test
+#' @param x
 #' @param STEPS
 #' @param RMSEweights
 #'
@@ -12,48 +12,50 @@
 #'
 #' @examples
 
-stepcastITS <- function(models, x.test, STEPS = 1L,
-                        RMSEweights){
+stepcastITS <- function(models, x, STEPS = 1L,
+                        RMSEweights,
+                        covariates_fix, covariates_time){
+  
+  # Predict and update the dataset 
+  updateStep <- function(x, models, RMSEweights){
+    prediction <- matrix(nrow = nrow(x))
 
-  updateStep <- function(x.test, models, RMSEweights){
+    for (jj in models) {
+        prediction <- cbind(prediction, predict(jj, x = x))
+    }
 
-    prediction <- lapply(models,
-                         function(mod, x = x.test){
-                           if(!exists(mod$attr)) stop("no attribute")
-                           if(mod$attr == "lm")    pred = cbind("lm" = predict.lm_fit(mod[[1]], x))
-                           if(mod$attr == "rf")    pred = cbind("rf" = predict.ranger_fit(mod[[1]], x))
-                           if(mod$attr == "lasso") pred = cbind("lasso" = predict.lasso_fit(mod[[1]], x))
-                           return(pred)
-                         })
-
-    prediction <- do.call(cbind, prediction)
+    prediction <- as.matrix(prediction[, 2:ncol(prediction)])
+    colnames(prediction) <- sapply(models, function(x) x@type)
 
     if(length(RMSEweights) > 1){
       prediction <- prediction[, names(RMSEweights)] %*% as.vector(RMSEweights)
     }
 
     # Update the dataframe for new prediction
-    b <- colnames(x.test)
-    new.x <- x.test
+    b <- colnames(x)
+    new.x <- x
     new.x[, grep("LAG", colnames(new.x))] <- cbind(
       new.x[, grep("LAG", colnames(new.x)), with = FALSE ][, -1],
       prediction
     )
-    new.x$year <- new.x$year + 1
-    new.x$season <- new.x$season + 1
-    # new.x <- new.x[, ":="(year = year + 1, season = season + 1)]
+
+    # Update by one the time variables
+    new.x <- new.x[, (covariates_time) := lapply(.SD, function(x) x + 1), 
+                    .SDcols = covariates_time]
+    # new.x$year <- new.x$year + 1
+    # new.x$season <- new.x$season + 1
 
     return(list("prediction" = prediction,
                 "newDF" = new.x))
   }
 
-  stepPredictions <- matrix(nrow = nrow(x.test),
+  stepPredictions <- matrix(nrow = nrow(x),
                             ncol = STEPS)
 
   for (jj in 1:STEPS){
-    step <- updateStep(x.test, models, RMSEweights = RMSEweights)
-    stepPredictions[, jj] <- step$prediction
-    x.test <- step$newDF
+    st <- updateStep(x, models, RMSEweights = RMSEweights)
+    stepPredictions[, jj] <- st$prediction
+    x <- st$newDF
   }
 
   return(stepPredictions)

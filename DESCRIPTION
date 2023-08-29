@@ -16,7 +16,9 @@ Imports:
     data.table,
     stats,
     dplyr,
-    tidyr
+    xgboost,
+    tidyr,
+    glmnet
 Suggests: 
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

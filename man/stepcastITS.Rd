@@ -4,7 +4,14 @@
 \alias{stepcastITS}
 \title{stepcastITS}
 \usage{
-stepcastITS(models, x.test, STEPS = 1L, RMSEweights)
+stepcastITS(
+  models,
+  x,
+  STEPS = 1L,
+  RMSEweights,
+  covariates_fix,
+  covariates_time
+)
 }
 \arguments{
 \item{RMSEweights}{}

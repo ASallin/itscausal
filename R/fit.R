@@ -19,7 +19,7 @@
 #' @examples
 
 
-fit <- function(x.train, y.train, x.test, y.test,
+fitOLD <- function(x.train, y.train, x.test, y.test,
                 binary = F, method = c("lasso", "lm", "rf")){
 
     # method <- match.arg(method)
