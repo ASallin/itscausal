@@ -149,7 +149,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     # HERE: FLAG! We take the mean of all predictions per time period.
     # HERE: FLAG! We take the median of all predictions per time period.
     # Here: use post intervention periods for weighting of predictions!
-    predicted <- list_predictionsT[,lapply(.SD, median, na.rm=TRUE),
+    predicted <- list_predictionsT[,lapply(.SD, mean, na.rm=TRUE),
                                    by = c("ID")][, -"time"]
 
     predicted <- melt(predicted, id.vars = c('ID'), variable.name = "time",
