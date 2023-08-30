@@ -58,7 +58,7 @@ MLModelITS <- function(model, type) {
 }
 
 
-#' Train
+#' TrainITS
 #' 
 #' Define the train function as an S3 generic
 #' @param object object to train on 
@@ -72,6 +72,7 @@ train <- function(object, ...) {
 }
 
 
+
 #' train.MLModelITS
 #' 
 #' Define the train function as an S3 generic
@@ -81,7 +82,7 @@ train <- function(object, ...) {
 #' @param tuning_params a list containing tuning parameters for algorithms
 #' @return
 #' @export
-#'
+#' @importFrom methods new slot
 #' @examples
 #' 
 

@@ -7,7 +7,7 @@
 #' @return
 #' @export
 #' 
-#' @import data.table
+#' @importFrom data.table data.table
 #'
 #' @examples
 #' df <- data.frame(ind = sample(1:20, 200, replace = TRUE),

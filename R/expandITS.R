@@ -13,6 +13,7 @@
 #' @param y is a string indicating the series.
 #' 
 #' @import stats
+#' @importFrom dplyr left_join
 #' @return
 #' @export
 #'

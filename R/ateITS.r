@@ -11,7 +11,7 @@
 #' @param groups a vector for which groups are investigated. Default is NULL: ate for the 
 #'     population are computed 
 #' 
-#' @import dplyr data.table
+#' @import data.table
 #'
 #' @return
 #' @export

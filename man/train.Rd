@@ -2,7 +2,7 @@
 % Please edit documentation in R/predict_class.r
 \name{train}
 \alias{train}
-\title{Train}
+\title{TrainITS}
 \usage{
 train(object, ...)
 }
