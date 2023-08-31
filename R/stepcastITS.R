@@ -21,7 +21,7 @@ stepcastITS <- function(models, x, STEPS = 1L,
     prediction <- matrix(nrow = nrow(x))
 
     for (jj in models) {
-        prediction <- cbind(prediction, predict(jj, x = x))
+        prediction <- cbind(prediction, predict.MLModelITS(jj, x = x))
     }
 
     prediction <- as.matrix(prediction[, 2:ncol(prediction)])
@@ -50,7 +50,7 @@ stepcastITS <- function(models, x, STEPS = 1L,
   }
 
   stepPredictions <- matrix(nrow = nrow(x),
-                            ncol = STEPS)
+                            ncol = ifelse(STEPS==0, 1, STEPS))
 
   for (jj in 1:STEPS){
     st <- updateStep(x, models, RMSEweights = RMSEweights)

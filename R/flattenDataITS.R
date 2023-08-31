@@ -21,9 +21,6 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
                            key , outcome) {
 
 
-    if(!is.integer(WINDOW)){stop("`WINDOW` must be an integer.")}
-    if(!is.integer(STEPS)){stop("`STEPS` must be an integer.")}
-
     # Vector of indices
     stopifnot(is.vector(index))
 
@@ -40,25 +37,27 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
 
 
     # Function to reshape
-    reshapeDataITS <- function(index, WINDOW, STEPS, data,
+    reshapeDataITS <- function(index, WINDOW, STEPS, dataT,
                                 covariates_fix,
                                 covariates_time){
 
         # Keep observations with dates earlier than index but later than index - past_window
-        dataWindow <- data[time <= -(index + STEPS) & (time >= (-(index + STEPS) - WINDOW)), ]
+        dataWindow <- dataT[time <= -(index + STEPS) & (time >= (-(index + STEPS) - WINDOW)), ]
 
         # Long to wide with sum aggregation
-        dfaw <- if(is.null(covariates_fix)) {
-            dcast(dataWindow, ID ~ time, value.var = "y")
+        if(is.null(covariates_fix)) {
+            dfaw <- data.table::dcast(dataWindow, ID ~ time, value.var = "y")
         } else {
-            dcast(dataWindow, as.formula(paste(" ID +", paste(covariates_fix, collapse = " + "), "~", time )),
-                  value.var = "y")
+            dfaw <- dcast(dataWindow, as.formula(paste(" ID +", paste(covariates_fix, collapse = " + "), "~", time )),
+                            value.var = "y")
         }
 
+        # colnames(dfaw) <- c("ID", covariates_fix, paste0("LAG", -c(-(WINDOW+STEPS):-(index+STEPS+1))), "y")
         colnames(dfaw) <- c("ID", covariates_fix, paste0("LAG", WINDOW:1), "y")
+        # colnames(dfaw) <- c("ID", covariates_fix, paste0("LAG", colnames(dfaw)[colnames(dfaw) %in% -WINDOW:1]), "y")
 
         selectCols <- c("time", covariates_time)
-        dfaw <- cbind(dfaw, data[time == -(index + STEPS), ..selectCols])
+        dfaw <- cbind(dfaw, dataT[time == -(index + STEPS), ..selectCols])
 
         # Return
         return(dfaw)

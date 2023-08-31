@@ -43,7 +43,7 @@
 #' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
 #'                 y = "y")
 
-forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer(WINDOW/3),
+forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
                         covariates_time, covariates_fix = NULL,
                         key, y, method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
 
@@ -51,11 +51,23 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
   cv = ID = rbindlist = NULL # due to NSE notes in R CMD check
 
   # Preparation
+  if(is.null(STEPS)) STEPS <- 1
+  if(is.null(WINDOW)) WINDOW <- INDEX-STEPS-2L
+
   window <- WINDOW
   steps  <- STEPS
+  if(window-steps < 2){stop("not enough past periods. Lower steps or increase windows.")}
+  if(window>INDEX-steps){stop("Window is too long.")}
+  if(window+steps < 2){stop("not enough past periods. Lower steps or increase windows.")}
+  if(INDEX < max(data$time)-INDEX){stop("Less past periods than future ones.")}
+
+  if(is.null(covariates_time)) {
+    data$timeCOV <- data[[time]]
+    covariates_time <- c("timeCOV")
+  }
 
   if(is.null(covariates_fix)) {vars <- c(time, y, key, covariates_time)
-    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}
+    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}  
 
   if (!all(vars %in% colnames(data))) {
     stop("Some variables are not found in the data.")
@@ -89,7 +101,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
     message(i, "...")
 
     dat <- flattenDataITS(data = data,
-                          index = c(0:(window - steps)),
+                          index = c(0:steps),
                           WINDOW = window,
                           STEPS = steps,
                           time = time,
@@ -121,7 +133,8 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
                            covariates_fix = if(is.null(covariates_fix)) {
                                               c("cv")
                                             } else {c(covariates_fix, "cv")},
-                           key = key, outcome = y)
+                           key = key, 
+                           outcome = y)
 
     x.pred   = pred[, -c("ID", "time", "cv", "y")]
 
@@ -131,7 +144,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
                            RMSEweights = results$weights,
                            covariates_time = covariates_time)
 
-    colnames(prediction) <- paste0("LEAD", 1:steps)
+    colnames(prediction) <- paste0("PRED", ifelse(steps == 1, 0, 0:steps))
 
     test <- cbind(prediction, pred[,c("ID", "time")])
 
@@ -139,7 +152,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = 12L, STEPS = as.integer
 
 
     flattenPrediction <- function(x){
-      colnames(x)[1:steps] <- paste0("PRED", 1:steps + as.numeric(unique(x$time)))
+      colnames(x)[0:steps] <- paste0("PRED", 1:steps + as.numeric(unique(x$time)))
       return(x)
     }
     list_predictionsT <- lapply(list_predictions, flattenPrediction)
