@@ -57,9 +57,11 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
   window <- WINDOW
   steps  <- STEPS
   if(window-steps < 2){stop("not enough past periods. Lower steps or increase windows.")}
-  if(window>INDEX-steps){stop("Window is too long.")}
-  if(window+steps < 2){stop("not enough past periods. Lower steps or increase windows.")}
-  if(INDEX < max(data$time)-INDEX){stop("Less past periods than future ones.")}
+  # if(window>INDEX-steps){stop("Window is too long.")}
+  if(min(data$time) + window > INDEX-abs(steps)){stop("Window is too long.")}
+  if(window+steps < 2){stop("Not enough past periods. Lower steps or increase windows.")}
+  if((INDEX - min(data$time)) < (max(data$time) - INDEX)){stop("Less past periods than future ones.")}
+  
 
   if(is.null(covariates_time)) {
     data$timeCOV <- data[[time]]
@@ -144,7 +146,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
                            RMSEweights = results$weights,
                            covariates_time = covariates_time)
 
-    colnames(prediction) <- paste0("PRED", ifelse(steps == 1, 0, 0:steps))
+    colnames(prediction) <- paste0("PRED", if(steps == 1) 0 else c(1:steps))
 
     test <- cbind(prediction, pred[,c("ID", "time")])
 

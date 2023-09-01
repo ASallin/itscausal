@@ -103,146 +103,157 @@ simulateITSMenchetti <- function(n, timePeriods, interventionTime = timePeriods-
 }
 
 
-library(itscausal)
-library(purrr)
-library(tidyr)
+# library(itscausal)
+# library(purrr)
+# library(tidyr)
 
-dfMap <- crossing(n=c(50, 100, 200),
-          timePeriods = c(20, 10, 5),
-          interventionTime = c(18, 8, 4),
-          linear = c(T, F))  %>% 
-          filter(timePeriods - interventionTime < interventionTime,
-                 timePeriods > interventionTime)  %>% 
-          mutate(df = pmap(list(n, timePeriods, interventionTime, linear),
-                            simulateITSMenchetti))  %>% 
-          mutate(df = map(df, pluck, 1),
-                 ate = map(df, pluck, 2))
+# dfMap <- crossing(n=c(50, 100, 200),
+#           timePeriods = c(20, 10, 5),
+#           interventionTime = c(18, 8, 4),
+#           linear = c(T, F))  %>% 
+#           filter(timePeriods - interventionTime < interventionTime,
+#                  timePeriods > interventionTime)  %>% 
+#           mutate(df = pmap(list(n, timePeriods, interventionTime, linear),
+#                             simulateITSMenchetti))  %>% 
+#           mutate(df = map(df, pluck, 1),
+#                  ate = map(df, pluck, 2))
 
-# For ate1
-dfMap1 <- dfMap  %>% 
-    slice(3)  %>% 
-    mutate(f = pmap(list(df, n, timePeriods, interventionTime),
-                    ~forecastITS(data = ..1, 
-                                 time = "time", 
-                                 INDEX = ..4, 
-                                 WINDOW = as.integer(..4-2L), 
-                                 covariates_time = NULL, 
-                                 STEPS = 1L,
-                                 key = "id",
-                                 y = "y"))
-                                 )
+# # For ate1
+# dfMap1 <- dfMap  %>% 
+#     slice(2)  %>% 
+#     mutate(f = pmap(list(df, n, timePeriods, interventionTime),
+#                     ~forecastITS(data = ..1, 
+#                                  time = "time", 
+#                                  INDEX = ..4, 
+#                                  WINDOW = NULL, 
+#                                  covariates_time = NULL, 
+#                                  STEPS = 0L,
+#                                  key = "id",
+#                                  y = "y"))
+#                                  )
 
 
-data <- dfMap[3,]$df[[1]]
-INDEX <- 8
-timePeriods = 10
-STEPS = 1L
-WINDOW = INDEX-STEPS-2L
-covariates_time = NULL
-covariates_fix = NULL
+# # data <- dfMap[3,]$df[[1]]
+# # INDEX <- 8
+# # timePeriods = 10
+# # STEPS = 1L
+# # WINDOW = INDEX-STEPS-2L
+# # covariates_time = NULL
+# # covariates_fix = NULL
+# # time = "time"
+# # key = "id"
+# # y = "y"
+# # method = c("lm", "rf", "xgboost")
+# # K = 5
+# # CYCLE = WINDOW
+# # FORECASTUNITS = NULL
+
+
+
+# map(dfMap1$f, pluck, "RMSEweights")
+
+# fore <- dfMap1[1,]$f[[1]]
+# dfAnalysis <- dfMap1[1,]$f[[1]]$data
+
+# dfFinal <- fore$out
+
+# ITS.plot <- function(object, interruption = NULL){
+
+#   interruption <- fore$call$INDEX
+#   y <- fore$call$y
+  
+#   df <- left_join(fore$data, fore$out)
+#   df <- na.omit(df)
+
+#   plot <- ggplot(df, aes(x = time, y = y_))
+#   plot <- 
+#   fore$data
+#   fore$out
+#   str(fore)
+
+# }
+# library(ggplot2)
+
+# dfFinal$y_hat
+
+# dfFinal  %>% 
+#   right_join(dfAnalysis)  %>% 
+#   group_by(time)  %>% 
+#   summarise(y = mean(y), y.pred = mean(y_hat, na.rm = T))  %>% 
+#   ggplot(aes(y = y, x = time)) +
+#   geom_line() +
+#   geom_point(aes(y = y.pred, x = time), color = "red") +
+#   geom_line(aes(y = y.pred, x = time), color = "red") +
+#   labs(x = "Time to/from the intervention",
+#        y = "Average y per time period") +
+# #   geom_vline(xintercept = 0, color = "red", linetype = 2) +
+# #   geom_vline(xintercept = 15, color = "red", linetype = 2) +
+#   theme_classic()
+
+
+# # ITE
+# forecast.object = fore
+
+# iteM <- iteITS(forecast.object = fore)
+
+# InstAte = ateITS(fore, iteM)
+# InstATE <- InstAte$InstATE
+
+# ggplot(InstATE$pred, aes(x = time, y = ite)) +
+#   geom_bar(stat= "identity")
+
+# # df <- simulateITSMenchetti(n = 50, timePeriods =6, interventionTime = 5, linear = F)
+
+
+# # data <- df
+# # INDEX = 5L
+# # timePeriods = 7
+# # WINDOW = as.integer(floor(timePeriods*0.66))
+# # STEPS = as.integer(interventionTime-WINDOW)
+# # covariates_time = NULL
+# # covariates_fix = NULL
+# # time = "time"
+# # key = "id"
+# # y = "y"
+# # method = c("lm", "rf", "xgboost")
+# # K = 5
+# # CYCLE = 5L
+# # FORECASTUNITS = NULL
+
+# # f    <- forecastITS(data = df, time = "time", INDEX = 8L, WINDOW = as.integer(floor(10*0.66)), covariates_time = NULL, key = "id", 
+# #                     y = "y")
+
+
+# simulateITS <- function(n, timePeriods, timeAfter, effectCutOff = NULL, groups = 1){
+
+#     # Parameters
+#     trend <- rnorm(1, 0, 1)
+
+#     time <- rep(c(1:timePeriods), n)
+#     id   <- rep(1:n, each = timePeriods)
+#     groups <- rep(sample(1:groups, n, replace = T), each = timePeriods)
+#     month <- time %% 12
+#     year  <- time %/% 12
+
+#     if(is.null(effectCutOff)){
+#         y    <- time + trend*time + rnorm(50, 0, 1) 
+#     } else {
+#         y    <- time + trend*time + rnorm(50, 0, 1) + effectCutOff * (timePeriods > timeAfter)
+#     }
+
+#     df   <- data.frame(id, time, year, y)
+
+# }
+
+
+data <- df
 time = "time"
+INDEX = 0L
+WINDOW = 12L
+STEPS = 3
+covariates_time = c("year", "season")
+covariates_fix = c("X")
 key = "id"
 y = "y"
-method = c("lm", "rf", "xgboost")
+method = c("lm", "rf")
 K = 5
-CYCLE = WINDOW
-FORECASTUNITS = NULL
-
-
-
-map(dfMap1$f, pluck, "RMSEweights")
-
-fore <- dfMap1[11,]$f[[1]]
-dfAnalysis <- dfMap1[11,]$f[[1]]$data
-
-dfFinal <- fore$out
-
-ITS.plot <- function(object, interruption = NULL){
-
-  interruption <- fore$call$INDEX
-  y <- fore$call$y
-  
-  df <- left_join(fore$data, fore$out)
-  df <- na.omit(df)
-
-  plot <- ggplot(df, aes(x = time, y = y_))
-  plot <- 
-  fore$data
-  fore$out
-  str(fore)
-
-}
-library(ggplot2)
-
-dfFinal$y_hat
-
-dfFinal  %>% 
-  right_join(dfAnalysis)  %>% 
-  group_by(time)  %>% 
-  summarise(y = mean(y), y.pred = mean(y_hat, na.rm = T))  %>% 
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_point(aes(y = y.pred, x = time), color = "red") +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  labs(x = "Time to/from the intervention",
-       y = "Average y per time period") +
-#   geom_vline(xintercept = 0, color = "red", linetype = 2) +
-#   geom_vline(xintercept = 15, color = "red", linetype = 2) +
-  theme_classic()
-
-
-# ITE
-forecast.object = fore
-
-iteM <- iteITS(forecast.object = fore)
-
-InstAte = ateITS(fore, iteM)
-InstATE <- InstAte$InstATE
-
-ggplot(InstATE$pred, aes(x = time, y = ite)) +
-  geom_bar(stat= "identity")
-
-# df <- simulateITSMenchetti(n = 50, timePeriods =6, interventionTime = 5, linear = F)
-
-
-# data <- df
-# INDEX = 5L
-# timePeriods = 7
-# WINDOW = as.integer(floor(timePeriods*0.66))
-# STEPS = as.integer(interventionTime-WINDOW)
-# covariates_time = NULL
-# covariates_fix = NULL
-# time = "time"
-# key = "id"
-# y = "y"
-# method = c("lm", "rf", "xgboost")
-# K = 5
-# CYCLE = 5L
-# FORECASTUNITS = NULL
-
-# f    <- forecastITS(data = df, time = "time", INDEX = 8L, WINDOW = as.integer(floor(10*0.66)), covariates_time = NULL, key = "id", 
-#                     y = "y")
-
-
-simulateITS <- function(n, timePeriods, timeAfter, effectCutOff = NULL, groups = 1){
-
-    # Parameters
-    trend <- rnorm(1, 0, 1)
-
-    time <- rep(c(1:timePeriods), n)
-    id   <- rep(1:n, each = timePeriods)
-    groups <- rep(sample(1:groups, n, replace = T), each = timePeriods)
-    month <- time %% 12
-    year  <- time %/% 12
-
-    if(is.null(effectCutOff)){
-        y    <- time + trend*time + rnorm(50, 0, 1) 
-    } else {
-        y    <- time + trend*time + rnorm(50, 0, 1) + effectCutOff * (timePeriods > timeAfter)
-    }
-
-    df   <- data.frame(id, time, year, y)
-
-}
-
-
