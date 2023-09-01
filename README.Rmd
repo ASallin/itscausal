@@ -40,7 +40,7 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-set.seed(234598)
+set.seed(2345983)
 
 # Simulate a time series
 
@@ -99,16 +99,17 @@ df$y = with(df,
             - 0.04*post*(time + abs(min(df$time))) # slope after the cutoff
             + year.effect + season.effect + 0.2*X + error + error.ar)
 
+df$forecast = with(df,
+                  constant + 0.075* (time + abs(min(df$time)))
+                  + year.effect + season.effect + 0.2*X )
 
 # Final df
-df <- df[, c("id", "X", "year", "season", "post", "time", "y")]
+df <- df[, c("id", "X", "year", "season", "post", "time", "y", "forecast")]
 df <- data.table(df)
 
 # Simulate y, its "true" value, and the "true" ate for t = 5 and t = 1
-df <- df[, model := constant + 0.075* (time + abs(min(df$time)))]
-df <- df[, forecast := constant + 0.075*(time + abs(min(df$time))) 
-            -  0.085 - 0.04*(time + abs(min(df$time)))]
-df <- df[, ite := ifelse(post == 0, NA, model-forecast)]
+# df <- df[, model := constant + 0.075* (time + abs(min(df$time)))]
+df <- df[, ite := ifelse(post == 0, NA, forecast-y)]
 ate5 <- mean(df[time < 6 & post == 1, ]$ite)
 ate1 <- mean(df[time < 2 & post == 1, ]$ite)
 
@@ -147,8 +148,9 @@ We can reproduce these results using the `itscausal` package.
 ```{r itscausal}
 data <- df
 
-fore <- forecastITS(data, time = "time", INDEX = 0L, WINDOW = 12L, covariates_time = c("year", "season"), 
-            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf"), 
+fore <- forecastITS(data, time = "time", INDEX = 0L, WINDOW = 24L, STEPS = 1,
+            covariates_time = c("year", "season"), 
+            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf", "xgboost"), 
             K = 5)
 
 dfFinal <- fore$out

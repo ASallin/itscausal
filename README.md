@@ -121,13 +121,48 @@ We can reproduce these results using the `itscausal` package.
 data <- df
 
 fore <- forecastITS(data, time = "time", INDEX = 0L, WINDOW = 12L, covariates_time = c("year", "season"), 
-            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf"), 
+            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf", "xgboost"), 
             K = 5)
 #> 1...
+#> [1]  train-rmse:1.210336 
+#> [2]  train-rmse:0.913594 
+#> [3]  train-rmse:0.751264 
+#> [4]  train-rmse:0.628238 
+#> [5]  train-rmse:0.522888 
+#> [6]  train-rmse:0.445028 
+#> [7]  train-rmse:0.396715
 #> 2...
+#> [1]  train-rmse:1.185382 
+#> [2]  train-rmse:0.841580 
+#> [3]  train-rmse:0.669753 
+#> [4]  train-rmse:0.578535 
+#> [5]  train-rmse:0.470142 
+#> [6]  train-rmse:0.434495 
+#> [7]  train-rmse:0.377132
 #> 3...
+#> [1]  train-rmse:1.188388 
+#> [2]  train-rmse:0.902867 
+#> [3]  train-rmse:0.725274 
+#> [4]  train-rmse:0.644023 
+#> [5]  train-rmse:0.592902 
+#> [6]  train-rmse:0.477781 
+#> [7]  train-rmse:0.450272
 #> 4...
+#> [1]  train-rmse:1.180610 
+#> [2]  train-rmse:0.959714 
+#> [3]  train-rmse:0.805028 
+#> [4]  train-rmse:0.677334 
+#> [5]  train-rmse:0.563942 
+#> [6]  train-rmse:0.537375 
+#> [7]  train-rmse:0.426045
 #> 5...
+#> [1]  train-rmse:1.221416 
+#> [2]  train-rmse:0.870979 
+#> [3]  train-rmse:0.741411 
+#> [4]  train-rmse:0.623144 
+#> [5]  train-rmse:0.549746 
+#> [6]  train-rmse:0.508249 
+#> [7]  train-rmse:0.479031
 
 dfFinal <- fore$out
 
@@ -170,11 +205,11 @@ ggplot(InstATE$pred, aes(x = time, y = ite)) +
 ``` r
 ate1its <- ateITS(fore, iteM, n.periods = 1)
 paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
-#> [1] "mean =  2.446 ; sd =  1.402"
+#> [1] "mean =  1.631 ; sd =  1.459"
 
 ate5its <- ateITS(fore, iteM, n.periods = 5)
 paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
-#> [1] "mean =  2.684 ; sd =  1.447"
+#> [1] "mean =  1.651 ; sd =  1.522"
 
 ate1
 #> [1] 3.285

@@ -16,59 +16,86 @@
 #'
 #' @examples
 flattenDataITS <- function(data, index, WINDOW, STEPS,
-                           time, covariates_time,
+                           time, 
+                           covariates_time,
                            covariates_fix,
+                           covariates_var = NULL,
                            key , outcome) {
 
-
-    if(!is.integer(WINDOW)){stop("`WINDOW` must be an integer.")}
-    if(!is.integer(STEPS)){stop("`STEPS` must be an integer.")}
 
     # Vector of indices
     stopifnot(is.vector(index))
 
-
     # Change names
-    data <- data.table(data)
+    data <- as.data.frame(data)
 
-    data <- setnames(data, time, "time")
-    data <- setnames(data, outcome, "y")
-    data <- setnames(data, key, "ID")
+    # data <- setnames(data, time, "time")
+    # data <- setnames(data, outcome, "y")
+    # data <- setnames(data, key, "ID")
 
-    selectCols <- c("ID", "time", "y", covariates_time, covariates_fix)
-    dataT <- data[, ..selectCols]
+    selectCols <- c(key, time, outcome, covariates_time, covariates_fix, covariates_var)
+    dataReshape <- data[, selectCols]
 
 
     # Function to reshape
-    reshapeDataITS <- function(index, WINDOW, STEPS, data,
-                                covariates_fix,
-                                covariates_time){
+    reshapeDataITS <- function(index, WINDOW, STEPS, dataReshape,
+                                covariates_fix = NULL,
+                                covariates_time,
+                                covariates_var = NULL){
 
         # Keep observations with dates earlier than index but later than index - past_window
-        dataWindow <- data[time <= -(index + STEPS) & (time >= (-(index + STEPS) - WINDOW)), ]
-
+        # dataWindow <- dataReshape[time <= -(index + STEPS) & (time >= (-(index + STEPS) - WINDOW)), ]
+        dataWindow <- dataReshape[dataReshape[[time]] <= -(index + STEPS) & (dataReshape[[time]] >= (-(index + STEPS) - WINDOW)), ]
+        
         # Long to wide with sum aggregation
-        dfaw <- if(is.null(covariates_fix)) {
-            dcast(dataWindow, ID ~ time, value.var = "y")
-        } else {
-            dcast(dataWindow, as.formula(paste(" ID +", paste(covariates_fix, collapse = " + "), "~", time )),
-                  value.var = "y")
-        }
+       if(is.null(covariates_fix) & is.null(covariates_var)) {
+            
+            formulaDCast <- as.formula(paste0(key, "~ ", time))
+            
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = outcome)
 
-        colnames(dfaw) <- c("ID", covariates_fix, paste0("LAG", WINDOW:1), "y")
+            colnames(dfWide) <- c(key, paste0("LAG", WINDOW:1), outcome)
+
+        } else if (!is.null(covariates_fix) & is.null(covariates_var))  {
+            
+            formulaDCast <- as.formula(paste0(key, "+", paste(covariates_fix, collapse = " + "), 
+                                                "~", time))
+
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = outcome)
+
+            colnames(dfWide) <- c(key, covariates_fix, paste0("LAG", WINDOW:1), outcome)
+
+        } else if (!is.null(covariates_fix) & !is.null(covariates_var)) {
+        
+            formulaDCast <- as.formula(paste0(key, "+", paste(covariates_fix, collapse = " + "), 
+                                                "~ ", time))
+
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = c(outcome, covariates_var))
+
+            nams <- character()
+            for (i in covariates_var) {nams <- c(nams, paste0(i, "LAG", WINDOW:0))} 
+
+            colnames(dfWide) <- c(key, covariates_fix, 
+                                paste0("LAG", WINDOW:1),
+                                outcome,
+                                nams)
+
+        } else { stop() }
 
         selectCols <- c("time", covariates_time)
-        dfaw <- cbind(dfaw, data[time == -(index + STEPS), ..selectCols])
+        dfWide <- cbind(dfWide, dataReshape[dataReshape[[time]] == -(index + STEPS), selectCols])
 
         # Return
-        return(dfaw)
+        return(dfWide)
     }
 
 
     # Reshape for each level of index
     dataFull <- lapply(index, reshapeDataITS,
-                        data = dataT, WINDOW = WINDOW, STEPS = STEPS,
-                        covariates_time = covariates_time, covariates_fix = covariates_fix)
+                        data = dataReshape, WINDOW = WINDOW, STEPS = STEPS,
+                        covariates_time = covariates_time, 
+                        covariates_fix = covariates_fix,
+                        covariates_var = covariates_var)
     dataFull <- do.call(rbind, dataFull)
 
     return(dataFull)
