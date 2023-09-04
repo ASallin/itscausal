@@ -12,8 +12,9 @@ flattenDataITS(
   time,
   covariates_time,
   covariates_fix,
+  covariates_var = NULL,
   key,
-  outcome
+  y
 )
 }
 \arguments{
@@ -23,7 +24,7 @@ flattenDataITS(
 
 \item{WINDOW}{Window for prediction}
 
-\item{outcome}{}
+\item{y}{}
 }
 \description{
 flattenDataITS

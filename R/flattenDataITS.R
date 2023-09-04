@@ -9,7 +9,7 @@
 #' @param covariates_time
 #' @param covariates_fix
 #' @param key
-#' @param outcome
+#' @param y
 #'
 #' @return
 #' @export
@@ -20,7 +20,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
                            covariates_time,
                            covariates_fix,
                            covariates_var = NULL,
-                           key , outcome) {
+                           key , y) {
 
 
     # Vector of indices
@@ -29,11 +29,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
     # Change names
     data <- as.data.frame(data)
 
-    # data <- setnames(data, time, "time")
-    # data <- setnames(data, outcome, "y")
-    # data <- setnames(data, key, "ID")
-
-    selectCols <- c(key, time, outcome, covariates_time, covariates_fix, covariates_var)
+    selectCols <- c(key, time, y, covariates_time, covariates_fix, covariates_var)
     dataReshape <- data[, selectCols]
 
 
@@ -52,32 +48,32 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
             
             formulaDCast <- as.formula(paste0(key, "~ ", time))
             
-            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = outcome)
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = y)
 
-            colnames(dfWide) <- c(key, paste0("LAG", WINDOW:1), outcome)
+            colnames(dfWide) <- c(key, paste0("LAG", WINDOW:1), y)
 
         } else if (!is.null(covariates_fix) & is.null(covariates_var))  {
             
             formulaDCast <- as.formula(paste0(key, "+", paste(covariates_fix, collapse = " + "), 
                                                 "~", time))
 
-            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = outcome)
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = y)
 
-            colnames(dfWide) <- c(key, covariates_fix, paste0("LAG", WINDOW:1), outcome)
+            colnames(dfWide) <- c(key, covariates_fix, paste0("LAG", WINDOW:1), y)
 
         } else if (!is.null(covariates_fix) & !is.null(covariates_var)) {
         
             formulaDCast <- as.formula(paste0(key, "+", paste(covariates_fix, collapse = " + "), 
                                                 "~ ", time))
 
-            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = c(outcome, covariates_var))
+            dfWide <-  dcast(as.data.table(dataWindow), formulaDCast, value.var = c(y, covariates_var))
 
             nams <- character()
             for (i in covariates_var) {nams <- c(nams, paste0(i, "LAG", WINDOW:0))} 
 
             colnames(dfWide) <- c(key, covariates_fix, 
                                 paste0("LAG", WINDOW:1),
-                                outcome,
+                                y,
                                 nams)
 
         } else { stop() }
@@ -98,5 +94,5 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
                         covariates_var = covariates_var)
     dataFull <- do.call(rbind, dataFull)
 
-    return(dataFull)
+    return(as.data.frame(dataFull))
 }
