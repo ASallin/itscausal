@@ -1,5 +1,5 @@
 #' Forecast function for ITS
-#' 
+#'
 #' Main function for the ITS. Uses cross-validation to perform "sliding-window" in
 #' single-step or multiple-step estimation of time series.
 #' @param data data is in long format (multiple rows per key)
@@ -23,25 +23,39 @@
 #' Possible methods are c("lm", "rf").
 #' @param K is the number of folds for the k-fold cross-validation technique.
 #' Default is K = 5.
-#' 
+#'
 #' @import stats
 #' @return
 #' @export
 #'
 #' @examples
-#' 
+#'
 #' time <- rep(c(1:50), 5)
 #' id   <- rep(1:5, each = 50)
 #' year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
 #' y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
 #' df   <- data.frame(id, time, year, y)
-#' f    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
+#' f    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
 #'                 y = "y")
-#' 
+#'
 #' # Unbalanced panel
 #' dfUB <- df[sample(1:250, 230), ]
-#' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
+#' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
 #'                 y = "y")
+
+
+data
+time = "time"
+INDEX = 0L
+WINDOW = 12L
+covariates_time = c("season")
+covariates_fix = c("X")
+key = "ID"
+y = "y"
+method = c("lm")
+K = 2
+CYCLE = 12L
+FORECASTUNITS = NULL
 
 forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
                         covariates_time, covariates_fix = NULL,
@@ -61,7 +75,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
   if(min(data$time) + window > INDEX-abs(steps)){stop("Window is too long.")}
   if(window+steps < 2){stop("Not enough past periods. Lower steps or increase windows.")}
   if((INDEX - min(data$time)) < (max(data$time) - INDEX)){stop("Less past periods than future ones.")}
-  
+
 
   if(is.null(covariates_time)) {
     data$timeCOV <- data[[time]]
@@ -69,12 +83,12 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
   }
 
   if(is.null(covariates_fix)) {vars <- c(time, y, key, covariates_time)
-    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}  
+    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}
 
   if (!all(vars %in% colnames(data))) {
     stop("Some variables are not found in the data.")
   }
-  
+
   # Prepare data
   data <- data.table(data)
   data <- data[, ..vars]
@@ -110,7 +124,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
                           covariates_time = covariates_time,
                           covariates_fix = if(is.null(covariates_fix)) {
                                               c("cv")
-                                            } else {c(covariates_fix, "cv")}, 
+                                            } else {c(covariates_fix, "cv")},
                           key = key,
                           outcome = y)
 
@@ -135,7 +149,7 @@ forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
                            covariates_fix = if(is.null(covariates_fix)) {
                                               c("cv")
                                             } else {c(covariates_fix, "cv")},
-                           key = key, 
+                           key = key,
                            outcome = y)
 
     x.pred   = pred[, -c("ID", "time", "cv", "y")]
