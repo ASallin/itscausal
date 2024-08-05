@@ -1,10 +1,10 @@
-#' This function estimates random forest lasso regression based on the \code{\link{ranger}} package
+#' This function estimates linear regressions based on the \code{\link{lm}} function
 #'
 #' @param x Matrix of covariates (number of observations times number of covariates matrix)
 #' @param y vector of outcomes (no df format)
 #' @param args List of arguments passed to  \code{\link{ranger}}
 #' @import ranger
-#' 
+#'
 #' @return
 #' @export
 #'
@@ -13,15 +13,15 @@
 #' @keywords internal
 
 lm_fit = function(x, y, args=list()) {
-  
-  data.ols <- as.data.frame(cbind(y, x)) 
+
+  data.ols <- as.data.frame(cbind(y, x))
   names(data.ols)[1] <- "Y"
-  
+
   ols <- do.call(lm,
                  c(list(paste("Y ~ ."),
-                 data = data.ols), 
+                 data = data.ols),
                 args))
-  
+
   rm(data.ols )
   return(ols)
 }
@@ -38,14 +38,14 @@ lm_fit = function(x, y, args=list()) {
 #' @keywords internal
 
 predict.lm_fit = function(lm_fit, x, xnew = NULL) {
-  
+
   if (is.null(xnew)) xnew <- x
-  
+
   data.ols <- as.data.frame(xnew)
-  
+
   fit_lm <- as.vector(predict(lm_fit, newdata = data.ols) )
 
   return(fit_lm)
-  
-  } 
+
+  }
 
