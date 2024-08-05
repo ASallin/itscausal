@@ -63,7 +63,7 @@ fit <- function(x.train, y.train, x.test, y.test,
                    importance = "impurity")
             } else if("xgboost" %in% ii){
                 args <- list(max.depth = 5, 
-                                eta = 1, nthread = 2, nrounds = 7, objective = "reg:squarederror")
+                             eta = 1, nthread = 2, nrounds = 9, objective = "reg:squarederror")
             }
     
         # Create instance of S4 object

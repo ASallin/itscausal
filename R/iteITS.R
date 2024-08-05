@@ -19,7 +19,9 @@ iteITS <- function(forecast.object){
 
   # Extract forecast: bind all rows from the stepcast predictions
   fit <- do.call(rbind, lapply(forecast.object$forecast, function(x) x[[2]]))
-
+  names(fit)[names(fit)=="ID"] <- key
+  names(fit)[names(fit)=="time"] <- time
+  
   # Create a LONG table of predicted values
   t <-melt(fit, id.vars = c(key, time), variable.name = "PRED",
                       value.name = "prediction")

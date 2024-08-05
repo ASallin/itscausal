@@ -40,7 +40,7 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-set.seed(2345923)
+set.seed(2345983)
 
 # Simulate a time series
 
@@ -120,6 +120,9 @@ df$y <- with(
   #+ error.ar
 )
 
+df$forecast = with(df,
+                  constant + 0.075* (time + abs(min(df$time)))
+                  + year.effect + season.effect + 0.2*X )
 
 # Final df
 df <- df[, c("id", "X", "season", "post", "time", "y")]

@@ -14,13 +14,12 @@
 #' @param covariates_time is a vector of variable names including the covariates that
 #' change with time. For better prediction, it is important to include in this vector
 #' the time variables (for instance, "year" or "season")
-#' @param covariates_fix is a vector of individual variables that are time invariant.
-#' the `forecast` does not yet implement time-varying covariates (i.e. series of other
-#' variables).
+#' @param covariates_fix is a string vector of individual variables that are time invariant.
+#' @param covariates_var is a string vector of individual variables that are time variant.
 #' @param key is the key that identifies units of observations.
 #' @param y is a string indicating the series.
 #' @param method is a vector containing the prediction methods used for prediction.
-#' Possible methods are c("lm", "rf").
+#' Possible methods are c("lm", "rf"m "xgboost").
 #' @param K is the number of folds for the k-fold cross-validation technique.
 #' Default is K = 5.
 #'
@@ -31,193 +30,226 @@
 #' @examples
 #'
 #' time <- rep(c(1:50), 5)
-#' id   <- rep(1:5, each = 50)
+#' id <- rep(1:5, each = 50)
 #' year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
-#' y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
-#' df   <- data.frame(id, time, year, y)
-#' f    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
-#'                 y = "y")
+#' y <- time + rnorm(50, 0, 1) + (time > 40) * rnorm(10, 2, 2)
+#' x1 <- rep(sample(c(0, 1), 5, replace = T), each = 50)
+#' x2 <- rep(sample(c(1, 2, 3), 5, replace = T), each = 50)
+#' xv1 <- rep(sample(c(0, 1), 50, replace = T), 5)
+#' xv2 <- rep(sample(c(1, 2, 3), 50, replace = T), 5)
+#' df <- cbind(time, id, year, y, x1, x2, xv1, xv2)
+#'
+#' f <- forecastITS(
+#'   data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+#'   y = "y"
+#' )
+#'
+#' f1 <- forecastITS(
+#'   data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+#'   y = "y",
+#'   covariates_fix = c("x1", "x2"),
+#'   covariates_var = c("xv1", "xv2")
+#' )
 #'
 #' # Unbalanced panel
 #' dfUB <- df[sample(1:250, 230), ]
-#' fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
-#'                 y = "y")
-
-
-data
-time = "time"
-INDEX = 0L
-WINDOW = 12L
-covariates_time = c("season")
-covariates_fix = c("X")
-key = "ID"
-y = "y"
-method = c("lm")
-K = 2
-CYCLE = 12L
-FORECASTUNITS = NULL
-
-forecastITS <- function(data, time, INDEX = 0L, WINDOW = NULL, STEPS = NULL,
-                        covariates_time, covariates_fix = NULL,
-                        key, y, method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
-
-
-  cv = ID = rbindlist = NULL # due to NSE notes in R CMD check
+#' fUB <- forecastITS(
+#'   data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+#'   y = "y"
+#' )
+forecastITS <- function(data, time, key, y,
+                        INDEX = 0L, WINDOW = NULL,
+                        STEPS = NULL,
+                        covariates_time, covariates_fix = NULL, covariates_var = NULL,
+                        method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
+  cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
 
   # Preparation
-  if(is.null(STEPS)) STEPS <- 1
-  if(is.null(WINDOW)) WINDOW <- INDEX-STEPS-2L
+  if (is.null(WINDOW)) WINDOW <- as.integer(floor(abs(INDEX - min(data[, time])) - 2))
+  if (is.null(STEPS)) STEPS <- as.integer(abs(INDEX - WINDOW) - 1)
 
   window <- WINDOW
-  steps  <- STEPS
-  if(window-steps < 2){stop("not enough past periods. Lower steps or increase windows.")}
-  # if(window>INDEX-steps){stop("Window is too long.")}
-  if(min(data$time) + window > INDEX-abs(steps)){stop("Window is too long.")}
-  if(window+steps < 2){stop("Not enough past periods. Lower steps or increase windows.")}
-  if((INDEX - min(data$time)) < (max(data$time) - INDEX)){stop("Less past periods than future ones.")}
+  steps <- STEPS
+  vars <- c(time, y, key)
+  if (!is.null(covariates_fix)) {
+    vars <- c(vars, covariates_fix)
+  }
+  if (!is.null(covariates_var)) {
+    vars <- c(vars, covariates_var)
+  }
 
-
-  if(is.null(covariates_time)) {
+  if (is.null(covariates_time)) {
     data$timeCOV <- data[[time]]
     covariates_time <- c("timeCOV")
   }
 
-  if(is.null(covariates_fix)) {vars <- c(time, y, key, covariates_time)
-    } else {vars <- c(time, y, key, covariates_fix, covariates_time)}
+  vars <- c(vars, covariates_time)
+  data <- data.table(data)
+  data <- data[, ..vars]
+  data <- data[, time := time - INDEX]
 
+  # Warnings and errors
   if (!all(vars %in% colnames(data))) {
     stop("Some variables are not found in the data.")
   }
 
-  # Prepare data
-  data <- data.table(data)
-  data <- data[, ..vars]
-  data <- data[, time := time - INDEX]
 
   if (nrow(na.omit(data)) != nrow(data)) {
     stop("NAs have been found. Please remove.")
   }
 
   # Check whether balanced panel
-  if(min(data[, .N, by = key]$N) !=  length(unique(data$time))){
+  if (min(data[, .N, by = key]$N) != length(unique(data$time))) {
     warning("It seems that you don't have a balanced panel. Please have a look at your df.")
     data <- expandITS(data, key, y, time, covariates_time, covariates_fix)
   }
 
   # Number of forecast units
-  if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data$time) + steps
+  if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) + steps
 
   # Prepare folds for cross-validation
   data[, "cv"] <- crossValidateITS(data, id = key, k = K)
 
+  index_max <- abs(min(data[[time]])) - (window + steps)
+
+  dat <- flattenDataITS(
+    data = data,
+    index = c(0:(index_max)),
+    WINDOW = window,
+    STEPS = steps,
+    time = time,
+    covariates_time = covariates_time,
+    covariates_fix = if (is.null(covariates_fix)) {
+      c("cv")
+    } else {
+      c(covariates_fix, "cv")
+    },
+    covariates_var = covariates_var,
+    key = key,
+    y = y
+  )
+
   forecast <- list()
 
-  for (i in 1:K){
-
+  for (i in 1:K) {
     message(i, "...")
 
-    dat <- flattenDataITS(data = data,
-                          index = c(0:steps),
-                          WINDOW = window,
-                          STEPS = steps,
-                          time = time,
-                          covariates_time = covariates_time,
-                          covariates_fix = if(is.null(covariates_fix)) {
-                                              c("cv")
-                                            } else {c(covariates_fix, "cv")},
-                          key = key,
-                          outcome = y)
+    exclude_x <- !names(dat) %in% c(key, time, "cv", y)
 
-    x.train  = dat[cv != i, -c("ID", "time", "cv", "y")]
-    x.test   = dat[cv == i, -c("ID", "time", "cv", "y")]
-    y.train  = dat[cv != i, "y"]
-    y.test   = dat[cv == i, "y"]
+    x.train <- dat[dat$cv != i, exclude_x]
+    x.test <- dat[dat$cv == i, exclude_x]
+    y.train <- dat[dat$cv != i, y]
+    y.test <- dat[dat$cv == i, y]
 
-    results <- fit(x.train  = x.train,
-                   x.test   = x.test,
-                   y.train  = y.train,
-                   y.test   = y.test,
-                   method   = method)
+    results <- fit(
+      x.train = x.train,
+      x.test = x.test,
+      y.train = y.train,
+      y.test = y.test,
+      method = method
+    )
 
-    # Predict for future
-    pred <- flattenDataITS(data = data[cv == i,],
-                           index = c(0:-FORECASTUNITS),
-                           WINDOW = window,
-                           STEPS = steps,
-                           time = time,
-                           covariates_time = covariates_time,
-                           covariates_fix = if(is.null(covariates_fix)) {
-                                              c("cv")
-                                            } else {c(covariates_fix, "cv")},
-                           key = key,
-                           outcome = y)
+    # Predict for future (from INDEX - steps to ForecastUNITS)
+    # All observations are in the support of our data, which means
+    # we have the observed y as well as the covariates_var.
+    pred <- flattenDataITS(
+      data = data[data$cv == i, ],
+      index = c(0:-FORECASTUNITS),
+      WINDOW = window,
+      STEPS = steps,
+      time = time,
+      covariates_time = covariates_time,
+      covariates_var = covariates_var,
+      covariates_fix = if (is.null(covariates_fix)) {
+        c("cv")
+      } else {
+        c(covariates_fix, "cv")
+      },
+      key = key, y = y
+    )
 
-    x.pred   = pred[, -c("ID", "time", "cv", "y")]
+    # Predict on x.test using multiple-steps forecast
+    models <- results$models
+    lPred <- split(pred, pred$time)
+    lPred <- lapply(lPred, function(x) x[, exclude_x])
+    RMSEweights <- results[[2]]
 
-    prediction <- stepcastITS(models = results$models,
-                           x = x.pred,
-                           STEPS = steps,
-                           RMSEweights = results$weights,
-                           covariates_time = covariates_time)
+    predictionList <- list()
 
-    colnames(prediction) <- paste0("PRED", if(steps == 1) 0 else c(1:steps))
+    for (ii in 1:length(lPred)) {
+      # Extract series of prediction from "models".
+      # Models has the same size as methods.
+      prediction <- matrix(ncol = 0, nrow = nrow(lPred[[ii]]))
 
-    test <- cbind(prediction, pred[,c("ID", "time")])
+      # Predict on x using models
+      for (jj in models) {
+        prediction <- cbind(prediction, predict(jj, x = lPred[[ii]]))
+      }
 
-    list_predictions <- split(test, test$time)
+      colnames(prediction) <- sapply(models, function(x) x@type)
 
+      # Take the ensemble of the predictions in the train period given the weights.
+      if (length(RMSEweights) > 1) {
+        prediction <- prediction[, names(RMSEweights)] %*% as.vector(RMSEweights)
+      }
 
-    flattenPrediction <- function(x){
-      colnames(x)[0:steps] <- paste0("PRED", 1:steps + as.numeric(unique(x$time)))
-      return(x)
+      # Record prediction
+      predictionList[[ii]] <- prediction
+
+      # One-step-ahead: replace LAG1 for y in the next x.pred in wide
+      if (ii == length(lPred)) {
+        break
+      } else {
+        lPred[[ii + 1]]$LAG1 <- as.numeric(prediction)
+      }
     }
-    list_predictionsT <- lapply(list_predictions, flattenPrediction)
-    list_predictionsT <- rbindlist(list_predictionsT, fill = TRUE)
-    list_predictionsT <- setcolorder(list_predictionsT, c("ID", "time"))
 
-    # HERE: FLAG! We take the mean of all predictions per time period.
-    # HERE: FLAG! We take the median of all predictions per time period.
-    # Here: use post intervention periods for weighting of predictions!
-    predicted <- list_predictionsT[,lapply(.SD, mean, na.rm=TRUE),
-                                   by = c("ID")][, -"time"]
+    prediction <- do.call(cbind, predictionList)
 
-    predicted <- melt(predicted, id.vars = c('ID'), variable.name = "time",
-                     value.name = "prediction")
+    y_hat <- cbind(prediction, split(pred, pred$time)[[1]][[key]])
+    colnames(y_hat) <- c(paste0("PRED", split(pred, pred[[key]])[[1]][[time]]), key)
 
-    predicted <- predicted[, time := (gsub("PRED", "", time))]
-    predicted <- predicted[, time := as.numeric(time)]
+    y_hat <- melt(data.table(y_hat), id.vars = key, variable = time, value = y)
+    y_hat[[time]] <- as.numeric(gsub("PRED", "", y_hat[[time]]))
 
-    return_list <- list(list_predictions, list_predictionsT, predicted)
+    listy <- pred[, c(key, y, time)]
 
+    return_list <- list("y_hat" = y_hat, "y" = listy)
     forecast[[i]] <- return_list
   }
 
   # Prepare final dataset
-  dfPred <- do.call(rbind, lapply(forecast, function(x) x[[3]]))
-  dfPred <- dfPred[order(time, ID), ]
+  dfPred <- do.call(rbind, lapply(forecast, function(x) x[[1]]))
+  dfPred <- as.data.frame(dfPred)
+  dfPred <- dfPred[order(dfPred[, key], dfPred[, time]), ]
 
-  dfPred <- setnames(dfPred, "time", time)
-  dfPred <- setnames(dfPred, "ID", key)
-  dfPred <- setnames(dfPred, "prediction", paste0(y, "_hat"))
+  names(dfPred) <- c(key, time, paste0(y, "_hat"))
+
+  dfOutcome <- do.call(rbind, lapply(forecast, function(x) x[[2]]))
+  dfOutcome <- as.data.frame(dfOutcome)
+  dfOutcome <- dfOutcome[order(dfOutcome[, key], dfOutcome[, time]), ]
 
 
   # Return
-  return(list(
+  ret <- list(
     "forecast" = forecast,
     "out" = dfPred,
     "data" = data,
     "RMSEweights" = results$weights,
-    "call" = list("time" = time,
-                  "INDEX" = INDEX,
-                  "WINDOW" = WINDOW,
-                  "STEPS" = STEPS,
-                  "covariates_time" = covariates_time,
-                  "covariates_fix" = covariates_fix,
-                  "key" = key,
-                  "y" = y,
-                  "method" = method,
-                  "K" = K,
-                  "CYCLE" = CYCLE,
-                  "FORECASTUNITS" = FORECASTUNITS
-    )))
+    "call" = list(
+      "time" = time,
+      "INDEX" = INDEX,
+      "WINDOW" = WINDOW,
+      "STEPS" = STEPS,
+      "covariates_time" = covariates_time,
+      "covariates_fix" = covariates_fix,
+      "key" = key,
+      "y" = y,
+      "method" = method,
+      "K" = K,
+      "CYCLE" = CYCLE,
+      "FORECASTUNITS" = FORECASTUNITS
+    )
+  )
+  return(ret)
 }

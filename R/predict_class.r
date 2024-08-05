@@ -114,10 +114,11 @@ train.MLModelITS <- function(object, x, y, tuning_params = NULL, ...) {
   } else if (model_type == "xgboost") {
     if (is.null(tuning_params)) {
 
-      object@model <- xgboost::xgboost(data = x, label = y, nrounds = 3, ...)
+      object@model <- xgboost::xgboost(data = x, label = y, nrounds = 3, verbose = 0, ...)
+
     } else {
         object@model <- do.call(xgboost::xgboost,
-                                c(list(data = x, label = y),
+                                c(list(data = x, label = y, verbose = 0),
                                 tuning_params))
     }
 
