@@ -11,6 +11,27 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
+
+
+# Generate AR Process
+# Generate the time series
+ar_process <- function(n_time, ar_params) {
+  errors <- rnorm(n_time, 0, 1) # Generate the random errors
+  simulated_data <- numeric(n_time)
+
+  for (i in length(ar_params):n_time) {
+    simulated_data[i] <- sum(ar_params * simulated_data[(i - length(ar_params)):(i - 1)]) + errors[i]
+  }
+
+  simulated_data
+}
+
+ar_params <- c(
+  0.5, 0.3, 0.001, 0.2,
+  0, -.050, -.020, 0.001, -0.02,
+  0, 0.03, 0.15
+) # Autocorrelation parameters with order p
+order <- 12 # Order of the autocorrelation
 ```
 
 # itscausal
@@ -40,47 +61,23 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-set.seed(2345983)
-
-# Simulate a time series
+set.seed(23493)
 
 # Generate simulated dataset
 n_time <- 100 # Number of time points
 intervention <- round(0.8 * n_time) # Time point of intervention
 n_id <- 60 # Number of unique individuals
 constant <- 1
-order <- 12 # Order of the autocorrelation
-ar_params <- c(
-  0.5, 0.3, 0.001, 0,
-  0, -.050, -.020, 0, 0,
-  0, 0.03, 0.15
-) # Autocorrelation parameters with order p
 
-# Dummy covariates
 X <- sample(c(0, 1), n_id, T)
+param_timetrend <- 0.07
+param_dummyintervention <- -0.15
+param_slopeintervention <- -0.10
 
 # Seasonality
 season <- rep(1:12, n_time %/% 12)
 season <- c(season, 1:(n_time %% 12))
-
-season_coeff <- rnorm(12, 0, 1)
-season_coeff[1] <- 0
-
-season_effect <- season * season_coeff[season]
-
-
-# Generate the time series
-ar_process <- function(n_time, ar_params) {
-  errors <- rnorm(n_time, 0, 1) # Generate the random errors
-  simulated_data <- numeric(n_time)
-
-  for (i in length(ar_params):n_time) {
-    simulated_data[i] <- sum(ar_params * simulated_data[(i - length(ar_params)):(i - 1)]) + errors[i]
-  }
-
-  simulated_data
-}
-
+season_effect <- rnorm(12, 0, 1)
 
 
 # Simulate an ITS
@@ -92,60 +89,57 @@ df <- data.frame(
     n_id
   ),
   id.effect = rep(rnorm(n_id, 0, 10), each = n_time),
-  # error.time = arima.sim(list(order = c(1, 12, 2), ar = 0.7, ma = c(1,2)),
-  #                        n = n_time*n_id-12, sd=1),
-  season_effect = rep(season * season_coeff[season], n_id),
+  season_effect = rep(season_effect, times = n_time),
   post = rep(c(rep(0, intervention), rep(1, 0.2 * n_time)), n_id),
   time = rep((1:n_time) - intervention, n_id),
+  error = rnorm(n_time*n_id, 0, 2)
+)
   error.ar = unlist(replicate(n_id, ar_process(n_time, ar_params), simplify = F)),
-  error = rep(rnorm(n_time, 0, 0.5), n_id)
 )
 
-# Set parameters for simulation
-param_timetrend <- 0.07
-param_dummyintervention <- -0.15
-param_slopeintervention <- -0.04
+df$abs_time <- df$time + abs(min(df$time))
+
+df <- data.table(df)
+head(df)
 
 
 # Program y as a function of time and of post*time
 df$y <- with(
   df,
-  constant + param_timetrend * (time + abs(min(df$time)))
+  constant + param_timetrend * abs_time
     + (param_dummyintervention * post) # effect at the cutoff
-    + param_slopeintervention * post * (time + abs(min(df$time))) # slope after the cutoff
+    + param_slopeintervention * post * abs_time # slope after the cutoff
     + season_effect
-    + 0.2 * X
-    + 0.03 * X * param_slopeintervention
     + error
+  #+ 0.2 * X
+  #+ 0.03 * X * param_slopeintervention
   #+ error.ar
 )
-
-df$forecast = with(df,
-                  constant + 0.075* (time + abs(min(df$time)))
-                  + year.effect + season.effect + 0.2*X )
-
-# Final df
-df <- df[, c("id", "X", "season", "post", "time", "y")]
-df <- data.table(df)
-
 
 # Simulate y with seasonal effects
 df <- df[
   , `:=`(
     model = constant
-    + param_timetrend * (time + abs(min(df$time)))
-      + season_effect
-      + 0.2 * X,
+    + param_timetrend * (abs_time)
+      + season_effect,
+    #+ 0.2 * X,
     forecast = constant
-    + param_timetrend * (time + abs(min(df$time)))
-      + param_dummyintervention
-      + param_slopeintervention * (time + abs(min(df$time)))
+    + param_timetrend * abs_time
+      + param_dummyintervention * post
+      + param_slopeintervention * abs_time * post
       + season_effect
-      + 0.2 * X
-      + 0.03 * X * param_slopeintervention
+    #+ 0.2 * X
+    #+ 0.03 * X * param_slopeintervention
   )
 ]
 
+lm(
+  y ~ abs_time + post + abs_time * post + as.factor(season),
+  data = df
+)
+
+
+# Compute effects
 df <- df[, ite := ifelse(post == 0, NA, model - forecast)]
 ate5 <- mean(df[time < 6 & post == 1, ]$ite)
 ate1 <- mean(df[time < 2 & post == 1, ]$ite)
@@ -161,26 +155,16 @@ We can visualize the its as follows:
 # Graph
 df %>%
   group_by(time, post) %>%
-  summarise(y = mean(y)) %>%
-  mutate(y = ifelse(post == 1, NA, y)) |>
+  summarise(y = mean(y), model = mean(model), forecast = mean(forecast)) %>%
+  # mutate(y = ifelse(post == 1, NA, y)) |>
   ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(
-    aes(
-      x = time,
-      y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season * season_coeff[season]
-    ),
-    col = "red"
-  ) +
+  geom_line(linetype = 2, size = 0.5) +
+  geom_line(aes(x = time, y = model), col = "red") +
   geom_line(
     aes(
       x = time,
       y = ifelse(time < 1, NA,
-        constant + param_timetrend * (time + abs(min(df$time)))
-          + (param_dummyintervention * post)
-          + param_slopeintervention * post * (time + abs(min(df$time)))
-          + season * season_coeff[season]
+        forecast
       )
     ),
     col = "blue"
@@ -191,31 +175,30 @@ df %>%
   ) +
   geom_vline(xintercept = 0, color = "red", linetype = 2) +
   theme_classic()
+scale_x_continuous(lim = c(-36, 24))
 ```
 
 
 We can reproduce these results using the `itscausal` package.
 
 ```{r itscausal}
-data <- df
-
 fore <- forecastITS(
-  data,
+  df,
   time = "time",
   INDEX = 0L,
-  WINDOW = 12L,
+  WINDOW = 36L,
   covariates_time = c("season"),
-  covariates_fix = c("X"),
+  #covariates_fix = c("X"),
   key = "ID",
   y = "y",
-  method = c("lm"),
+  method = c("lm", "rf", "xgboost"),
   K = 5
 )
 
 dfFinal <- fore$out
 
 dfFinal %>%
-  right_join(data) %>%
+  right_join(df) %>%
   group_by(time) %>%
   summarise(y = mean(y), y.pred = mean(y_hat)) %>%
   ggplot(aes(y = y, x = time)) +
@@ -225,7 +208,7 @@ dfFinal %>%
     aes(
       x = time,
       y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season * season_coeff[season]
+      #+ season_effect
     ),
     col = "#e95a08", linetype = 3, size = 1
   ) +
@@ -235,17 +218,18 @@ dfFinal %>%
   ) +
   geom_vline(xintercept = 0, color = "red", linetype = 2) +
   theme_classic()
+scale_x_continuous(lim = c(-36, 24))
 ```
 
 ```{r ite}
 # Now we need a way to compute the ITE
-iteM <- iteITS(forecast = fore)
+iteM <- iteITS(forecast.object = fore)
 ```
 
 
 ## Compute the instantaneous treatment effect for the whole population
 ```{r InstATE}
-InstAte <- ateITS(fore, iteM)
+InstAte <- ateITS(fore, ite.object = iteM)
 InstATE <- InstAte$InstATE
 
 ggplot(InstATE$pred, aes(x = time, y = ite)) +

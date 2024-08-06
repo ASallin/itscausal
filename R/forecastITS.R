@@ -57,11 +57,18 @@
 #'   data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
 #'   y = "y"
 #' )
-forecastITS <- function(data, time, key, y,
-                        INDEX = 0L, WINDOW = NULL,
+forecastITS <- function(data,
+                        time,
+                        key,
+                        y,
+                        INDEX = 0L,
+                        WINDOW = NULL,
                         STEPS = NULL,
                         covariates_time, covariates_fix = NULL, covariates_var = NULL,
-                        method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
+                        method = c("lm", "rf", "xgboost"),
+                        K = 5,
+                        CYCLE = 12L,
+                        FORECASTUNITS = NULL) {
   cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
 
   # Preparation
@@ -134,7 +141,8 @@ forecastITS <- function(data, time, key, y,
   for (i in 1:K) {
     message(i, "...")
 
-    exclude_x <- !names(dat) %in% c(key, time, "cv", y)
+    exclude_x <- !names(dat) %in% c(key, "cv", y)
+    # exclude_x <- !names(dat) %in% c(key, time, "cv", y)
 
     x.train <- dat[dat$cv != i, exclude_x]
     x.test <- dat[dat$cv == i, exclude_x]
@@ -148,6 +156,11 @@ forecastITS <- function(data, time, key, y,
       y.test = y.test,
       method = method
     )
+    # head(results$y.test.weight)
+    # head(y.test)
+    # head(x.train)
+    # summary(x.train$time)
+    # head(results$models)
 
     # Predict for future (from INDEX - steps to ForecastUNITS)
     # All observations are in the support of our data, which means
@@ -165,13 +178,14 @@ forecastITS <- function(data, time, key, y,
       } else {
         c(covariates_fix, "cv")
       },
-      key = key, y = y
+      key = key,
+      y = y
     )
 
     # Predict on x.test using multiple-steps forecast
     models <- results$models
     lPred <- split(pred, pred$time)
-    lPred <- lapply(lPred, function(x) x[, exclude_x])
+    lPred <- lapply(lPred, function(x) x[, !names(x) %in% c(key, "cv", y)])
     RMSEweights <- results[[2]]
 
     predictionList <- list()
@@ -183,7 +197,7 @@ forecastITS <- function(data, time, key, y,
 
       # Predict on x using models
       for (jj in models) {
-        prediction <- cbind(prediction, predict(jj, x = lPred[[ii]]))
+        prediction <- cbind(prediction, predict.MLModelITS(jj, x = lPred[[ii]]))
       }
 
       colnames(prediction) <- sapply(models, function(x) x@type)
@@ -197,10 +211,22 @@ forecastITS <- function(data, time, key, y,
       predictionList[[ii]] <- prediction
 
       # One-step-ahead: replace LAG1 for y in the next x.pred in wide
+      # if (ii == length(lPred)) {
+      #   break
+      # } else {
+      #   lPred[[ii + 1]]$LAG1 <- as.numeric(prediction)
+
       if (ii == length(lPred)) {
         break
       } else {
-        lPred[[ii + 1]]$LAG1 <- as.numeric(prediction)
+        for (lag in 1:window) {
+          lag_name <- paste0("LAG", lag)
+          if (lag == 1) {
+            lPred[[ii + 1]][[lag_name]] <- as.numeric(prediction)
+          } else {
+            lPred[[ii + 1]][[lag_name]] <- lPred[[ii]][[paste0("LAG", lag - 1)]]
+          }
+        }
       }
     }
 
@@ -247,7 +273,6 @@ forecastITS <- function(data, time, key, y,
       "y" = y,
       "method" = method,
       "K" = K,
-      "CYCLE" = CYCLE,
       "FORECASTUNITS" = FORECASTUNITS
     )
   )

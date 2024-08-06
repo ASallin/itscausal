@@ -61,25 +61,31 @@ single-step or multiple-step estimation of time series.
 \examples{
 
 time <- rep(c(1:50), 5)
-id   <- rep(1:5, each = 50)
+id <- rep(1:5, each = 50)
 year <- rep(c(rep(1990, 12), rep(1991, 12), rep(1992, 12), rep(1993, 12), rep(1994, 2)), 5)
-y    <- time + rnorm(50, 0, 1) + (time>40)*rnorm(10, 2, 2)
-x1   <- rep(sample(c(0,1), 5, replace = T), each = 50)
-x2   <- rep(sample(c(1,2,3), 5, replace = T), each = 50)
-xv1  <- rep(sample(c(0,1), 50, replace = T), 5)
-xv2  <- rep(sample(c(1,2,3), 50, replace = T), 5)
-df   <- cbind(time, id, year, y, x1, x2, xv1, xv2)
+y <- time + rnorm(50, 0, 1) + (time > 40) * rnorm(10, 2, 2)
+x1 <- rep(sample(c(0, 1), 5, replace = T), each = 50)
+x2 <- rep(sample(c(1, 2, 3), 5, replace = T), each = 50)
+xv1 <- rep(sample(c(0, 1), 50, replace = T), 5)
+xv2 <- rep(sample(c(1, 2, 3), 50, replace = T), 5)
+df <- cbind(time, id, year, y, x1, x2, xv1, xv2)
 
-f    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
-                y = "y")
+f <- forecastITS(
+  data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+  y = "y"
+)
 
-f1    <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
-                     y = "y",
-                     covariates_fix = c("x1", "x2"),
-                     covariates_var = c("xv1", "xv2"))
+f1 <- forecastITS(
+  data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+  y = "y",
+  covariates_fix = c("x1", "x2"),
+  covariates_var = c("xv1", "xv2")
+)
 
 # Unbalanced panel
 dfUB <- df[sample(1:250, 230), ]
-fUB <- forecastITS(data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id", 
-                y = "y")
+fUB <- forecastITS(
+  data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
+  y = "y"
+)
 }
