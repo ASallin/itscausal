@@ -55,13 +55,18 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
             dfWide <- dcast(as.data.table(dataWindow), formulaDCast, value.var = y)
 
             colnames(dfWide) <- c(key, covariates_fix, paste0("LAG", WINDOW:1), y)
+            #
         } else if (!is.null(covariates_fix) & !is.null(covariates_var)) {
             formulaDCast <- as.formula(paste0(
                 key, "+", paste(covariates_fix, collapse = " + "),
                 "~ ", time
             ))
 
-            dfWide <- dcast(as.data.table(dataWindow), formulaDCast, value.var = c(y, covariates_var))
+            dfWide <- dcast(
+                as.data.table(dataWindow),
+                formulaDCast,
+                value.var = c(y, covariates_var)
+            )
 
             nams <- character()
             for (i in covariates_var) {
