@@ -29,190 +29,299 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-set.seed(234598)
+set.seed(234493)
 
-# Simulate a time series
 
-# Generate simulated dataset
-n.time <- 100 # Number of time points
-intervention <- round(0.8*n.time) # Time point of intervention
-n.id <- 60 # Number of unique individuals
-constant <- 1
-order <- 12  # Replace p with the desired order of the autocorrelation
-ar_params <- c(0.5, 0.3, 0.001, 0, 0, -.050, -.020, 0, 0, 0, 0.03, 0.15)  # Replace ar1, ar2, ... with the autocorrelation parameters
-year.effect <- rnorm(n.time%/%12 + 1, 0, 0.5) # not growing ;-)
-year.effect <- c(rep(year.effect[1:(n.time%/%12)], each = 12), 
-                 rep(year.effect[(n.time%%12 + 1)], each = n.time%%12))
-season.effect <- rnorm(12, 0, 1)
-season.effect <- c(rep(season.effect, n.time%/%12), season.effect[1:(n.time%%12)])
-X <- sample(c(0,1), n.id, T)
-
-# Generate the time series
-ar_process <- function(n.time, ar_params){
-  
-  errors <- rnorm(n.time, 0, 1) # Generate the random errors
-  simulated_data <- numeric(n.time)
-  
-  for (i in length(ar_params):n.time) {
-    simulated_data[i] <- sum(ar_params * simulated_data[(i - length(ar_params)):(i - 1)]) + errors[i]
-  } 
-  
-  simulated_data
+ar_process <- function(n, phi = 0.7, sigma = 1) {
+  e <- rnorm(n, 0, sigma)
+  x <- numeric(n)
+  x[1] <- e[1]
+  for (t in 2:n) {
+    x[t] <- phi * x[t - 1] + e[t]
+  }
+  return(x)
 }
 
+arma_process <- function(n, ar = 0.7, ma = 0.3, sigma = 1) {
+  e <- rnorm(n, 0, sigma)
+  x <- numeric(n)
+  x[1] <- e[1]
+  for (t in 2:n) {
+    x[t] <- ar * x[t - 1] + e[t] + ma * e[t - 1]
+  }
+  return(x)
+}
 
+heteroskedastic_errors <- function(n, base_sigma = 1, increase_rate = 0.1) {
+  sigma <- base_sigma + increase_rate * (1:n)
+  return(rnorm(n, 0, sigma))
+}
+
+set.seed(23493)
+
+# Generate simulated dataset
+n_time <- 100 # Number of time points
+intervention <- round(0.8 * n_time) # Time point of intervention
+n_id <- 60 # Number of unique individuals
+constant <- 1
+
+X <- sample(c(0, 1), n_id, T)
+param_timetrend <- 0.07
+param_dummyintervention <- -0.15
+param_slopeintervention <- -0.10
+
+# Seasonality
+season_effect <- c(
+  0,
+  rnorm(2, 0, 4),
+  rnorm(4, -2, 0.5),
+  rnorm(3, 0, 1)
+)
 
 # Simulate an ITS
 df <- data.frame(
-  id = rep(seq(1:n.id), each = n.time),
-  X = rep(X, each = n.time),
-  year = rep(c(rep(1:(n.time%/%12), each = 12), rep(n.time%/%12+1, n.time%%12)), 
-             n.id),
-  season = rep(c(rep(1:12, n.time%/%12), (1:12)[1:(n.time%%12)]), 
-               n.id),
-  id.effect = rep(rnorm(n.id, 0, 10), each = n.time),
-  # error.time = arima.sim(list(order = c(1, 12, 2), ar = 0.7, ma = c(1,2)), 
-  #                        n = n.time*n.id-12, sd=1),
-  year.effect = rep(year.effect, n.id),
-  season.effect = rep(season.effect, n.id),
-  post = rep(c(rep(0, intervention), rep(1, 0.2*n.time)), n.id),
-  time = rep((1:n.time)-intervention, n.id),
-  error.ar = unlist(replicate(n.id, ar_process(n.time, ar_params), simplify = F)),
-  error = rep(rnorm(n.time, 0, 0.5), n.id)
+  ID = rep(seq(1:n_id), each = n_time),
+  X = rep(X, each = n_time),
+  season = rep(
+    c(rep(1:12, n_time %/% 12), (1:12)[1:(n_time %% 12)]),
+    n_id
+  ),
+  id.effect = rep(rnorm(n_id, 0, 10), each = n_time),
+  season_effect = rep(season_effect, times = n_time),
+  post = rep(c(rep(0, intervention), rep(1, 0.2 * n_time)), n_id),
+  time = rep((1:n_time) - intervention, n_id),
+  error_simple = rnorm(n_time * n_id, 0, 2),
+  error_ar = unlist(replicate(n_id, ar_process(n_time, sigma = 2), simplify = FALSE)),
+  error_arma = unlist(replicate(n_id, arma_process(n_time), simplify = FALSE)),
+  error_heteroskedastic = unlist(replicate(n_id, heteroskedastic_errors(n_time), simplify = FALSE))
 )
 
-# Program y as a function of time and of post*time
-df$y = with(df, 
-            constant + 0.075*(time + abs(min(df$time))) 
-            - (0.085*post) # effect at the cutoff
-            - 0.04*post*(time + abs(min(df$time))) # slope after the cutoff
-            + year.effect + season.effect + 0.2*X + error + error.ar)
+df$abs_time <- df$time + abs(min(df$time))
 
+# Generate y with different error structures
+df$y_simple <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_simple
+)
 
-# Final df
-df <- df[, c("id", "X", "year", "season", "post", "time", "y")]
+df$y_ar <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_ar
+)
+
+df$y_arma <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_arma
+)
+
+df$y_heteroskedastic <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_heteroskedastic
+)
+
 df <- data.table(df)
 
-# Simulate y, its "true" value, and the "true" ate for t = 5 and t = 1
-df <- df[, model := constant + 0.075* (time + abs(min(df$time)))]
-df <- df[, forecast := constant + 0.075*(time + abs(min(df$time))) 
-            -  0.085 - 0.04*(time + abs(min(df$time)))]
-df <- df[, ite := ifelse(post == 0, NA, model-forecast)]
+
+# Simulate y with seasonal effects
+df <- df[
+  , `:=`(
+    model = constant
+    + param_timetrend * (abs_time)
+      + season_effect
+      + 0.2 * X,
+    forecast = constant
+    + param_timetrend * abs_time
+      + param_dummyintervention * post
+      + param_slopeintervention * abs_time * post
+      + season_effect
+      + 0.2 * X
+      + 0.03 * X * param_slopeintervention
+  )
+]
+```
+
+    #> `summarise()` has grouped output by 'time'. You can override using the
+    #> `.groups` argument.
+    #> Warning: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
+    #> ℹ Please use `linewidth` instead.
+    #> This warning is displayed once every 8 hours.
+    #> Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
+    #> generated.
+
+<img src="man/figures/README-graph-1.png" width="100%" />
+
+We can visualize the its as follows:
+
+``` r
+# Compute effects
+df <- df[, ite := ifelse(post == 0, NA, model - forecast)]
 ate5 <- mean(df[time < 6 & post == 1, ]$ite)
 ate1 <- mean(df[time < 2 & post == 1, ]$ite)
 
 print(ate5)
-#> [1] 3.365
+#> [1] 8.3518
 print(ate1)
-#> [1] 3.285
+#> [1] 8.1518
 ```
-
-We can visualize the its as follows:
-
-    #> `summarise()` has grouped output by 'time'. You can override using the
-    #> `.groups` argument.
-    #> Warning: Removed 80 rows containing missing values (`geom_line()`).
-
-<img src="man/figures/README-graph-1.png" width="100%" />
 
 We can reproduce these results using the `itscausal` package.
 
 ``` r
-data <- df
+window <- 36L
 
-fore <- forecastITS(data, time = "time", INDEX = 0L, WINDOW = 12L, covariates_time = c("year", "season"), 
-            covariates_fix = c("X"), key = "id", y = "y", method = c("lm", "rf", "xgboost"), 
-            K = 5)
+fore_y_simple <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_simple",
+  method = c("lm", "xgboost"),
+  K = 5
+)
 #> 1...
-#> [1]  train-rmse:1.210336 
-#> [2]  train-rmse:0.913594 
-#> [3]  train-rmse:0.751264 
-#> [4]  train-rmse:0.628238 
-#> [5]  train-rmse:0.522888 
-#> [6]  train-rmse:0.445028 
-#> [7]  train-rmse:0.396715
 #> 2...
-#> [1]  train-rmse:1.185382 
-#> [2]  train-rmse:0.841580 
-#> [3]  train-rmse:0.669753 
-#> [4]  train-rmse:0.578535 
-#> [5]  train-rmse:0.470142 
-#> [6]  train-rmse:0.434495 
-#> [7]  train-rmse:0.377132
 #> 3...
-#> [1]  train-rmse:1.188388 
-#> [2]  train-rmse:0.902867 
-#> [3]  train-rmse:0.725274 
-#> [4]  train-rmse:0.644023 
-#> [5]  train-rmse:0.592902 
-#> [6]  train-rmse:0.477781 
-#> [7]  train-rmse:0.450272
 #> 4...
-#> [1]  train-rmse:1.180610 
-#> [2]  train-rmse:0.959714 
-#> [3]  train-rmse:0.805028 
-#> [4]  train-rmse:0.677334 
-#> [5]  train-rmse:0.563942 
-#> [6]  train-rmse:0.537375 
-#> [7]  train-rmse:0.426045
 #> 5...
-#> [1]  train-rmse:1.221416 
-#> [2]  train-rmse:0.870979 
-#> [3]  train-rmse:0.741411 
-#> [4]  train-rmse:0.623144 
-#> [5]  train-rmse:0.549746 
-#> [6]  train-rmse:0.508249 
-#> [7]  train-rmse:0.479031
 
-dfFinal <- fore$out
+fore_y_ar <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_ar",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+#> 1...
+#> 2...
+#> 3...
+#> 4...
+#> 5...
 
-dfFinal  %>% 
-  right_join(data)  %>% 
-  group_by(time)  %>% 
-  summarise(y = mean(y), y.pred = mean(y_hat))  %>% 
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  labs(x = "Time to/from the intervention",
-       y = "Average y per time period") +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
-  theme_classic()
-#> Joining with `by = join_by(id, time)`
-#> Warning: Removed 76 rows containing missing values (`geom_line()`).
+fore_y_arma <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_arma",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+#> 1...
+#> 2...
+#> 3...
+#> 4...
+#> 5...
+
+fore_y_heteroskedastic <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_heteroskedastic",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+#> 1...
+#> 2...
+#> 3...
+#> 4...
+#> 5...
+
+dfFinal_simple <- fore_y_simple$out
+dfFinal_ar <- fore_y_ar$out
+dfFinal_arma <- fore_y_arma$out
+dfFinal_heteroskedastic <- fore_y_heteroskedastic$out
 ```
 
-<img src="man/figures/README-itscausal-1.png" width="100%" />
+    #> Joining with `by = join_by(ID, time)`
+    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> (`geom_line()`).
 
-``` r
-# Now we need a way to compute the ITE
-iteM <- iteITS(forecast = fore)
-```
+<img src="man/figures/README-graphML-1.png" width="100%" />
+
+    #> Joining with `by = join_by(ID, time)`
+    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> (`geom_line()`).
+
+<img src="man/figures/README-graphML-2.png" width="100%" />
+
+    #> Joining with `by = join_by(ID, time)`
+    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> (`geom_line()`).
+
+<img src="man/figures/README-graphML-3.png" width="100%" />
+
+    #> Joining with `by = join_by(ID, time)`
+    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> (`geom_line()`).
+
+<img src="man/figures/README-graphML-4.png" width="100%" />
 
 ## Compute the instantaneous treatment effect for the whole population
 
 ``` r
-InstAte = ateITS(fore, iteM)
+iteM <- iteITS(forecast.object = fore_y_simple)
+
+InstAte <- ateITS(fore_y_simple, ite.object = iteM)
 InstATE <- InstAte$InstATE
 
 ggplot(InstATE$pred, aes(x = time, y = ite)) +
-  geom_bar(stat= "identity")
+  geom_bar(stat = "identity")
 ```
 
 <img src="man/figures/README-InstATE-1.png" width="100%" />
 
-## Per group
+## Per groupdf
 
 ``` r
-ate1its <- ateITS(fore, iteM, n.periods = 1)
+ate1its <- ateITS(fore_y_simple, iteM, n.periods = 1)
 paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
-#> [1] "mean =  1.631 ; sd =  1.459"
+#> [1] "mean =  8.868 ; sd =  0.225"
 
-ate5its <- ateITS(fore, iteM, n.periods = 5)
+ate5its <- ateITS(fore_y_simple, iteM, n.periods = 5)
 paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
-#> [1] "mean =  1.651 ; sd =  1.522"
+#> [1] "mean =  8.353 ; sd =  0.757"
 
 ate1
-#> [1] 3.285
+#> [1] 8.1518
 ate5
-#> [1] 3.365
+#> [1] 8.3518
 ```

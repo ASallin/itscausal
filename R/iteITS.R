@@ -10,6 +10,7 @@
 #'
 #' @examples
 iteITS <- function(forecast.object) {
+
   data <- data.table(forecast.object$data)
   key <- forecast.object$call$key
   time <- forecast.object$call$time
@@ -27,9 +28,8 @@ iteITS <- function(forecast.object) {
     id.vars = c(key, time), variable.name = "PRED",
     value.name = "prediction"
   )
-  # t <- t[, time := (gsub("PRED", "", PRED))]
-  # t <- t[, time := as.numeric(time)]
-  t <- t[, c("PRED") := NULL]
+  t <- data.table(t)
+  t$PRED <- NULL
   t <- na.omit(t)
   t$pred <- 1
 
