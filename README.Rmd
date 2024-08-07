@@ -32,17 +32,6 @@ ar_params <- c(
   0, 0.03, 0.15
 ) # Autocorrelation parameters with order p
 order <- 12 # Order of the autocorrelation
-
-
-library(lintr)
-
-# Set linter options
-linters <- linters_with_defaults(
-  line_length_linter = line_length_linter(120),
-  object_name_linter = object_name_linter(styles = "camelCase"),
-  spaces_left_parentheses_linter = NULL
-)
-# lint_package(path = ".")
 ```
 
 # itscausal
@@ -72,7 +61,7 @@ library(data.table)
 library(dplyr)
 library(ggplot2)
 
-set.seed(23493)
+set.seed(234493)
 
 
 ar_process <- function(n, phi = 0.7, sigma = 1) {
@@ -229,7 +218,6 @@ df %>%
   ) +
   geom_vline(xintercept = 0, color = "red", linetype = 2) +
   theme_classic()
-scale_x_continuous(lim = c(-36, 24))
 ```
 
 
@@ -406,15 +394,13 @@ dfFinal_heteroskedastic %>%
   theme_classic()
 ```
 
-```{r ite}
-# Now we need a way to compute the ITE
-iteM <- iteITS(forecast.object = fore)
-```
 
 
 ## Compute the instantaneous treatment effect for the whole population
 ```{r InstATE}
-InstAte <- ateITS(fore, ite.object = iteM)
+iteM <- iteITS(forecast.object = fore_y_simple)
+
+InstAte <- ateITS(fore_y_simple, ite.object = iteM)
 InstATE <- InstAte$InstATE
 
 ggplot(InstATE$pred, aes(x = time, y = ite)) +
@@ -424,10 +410,10 @@ ggplot(InstATE$pred, aes(x = time, y = ite)) +
 
 ## Per groupdf
 ```{r ate}
-ate1its <- ateITS(fore, iteM, n.periods = 1)
+ate1its <- ateITS(fore_y_simple, iteM, n.periods = 1)
 paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
 
-ate5its <- ateITS(fore, iteM, n.periods = 5)
+ate5its <- ateITS(fore_y_simple, iteM, n.periods = 5)
 paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
 
 ate1

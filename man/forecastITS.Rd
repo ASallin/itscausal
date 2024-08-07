@@ -17,7 +17,6 @@ forecastITS(
   covariates_var = NULL,
   method = c("lm", "rf", "xgboost"),
   K = 5,
-  CYCLE = 12L,
   FORECASTUNITS = NULL
 )
 }
