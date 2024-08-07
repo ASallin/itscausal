@@ -37,10 +37,10 @@ colnames(x) <- paste0("x", 1:4)
 
 y <- x[, 1] + 2 * x[, 2] + rnorm(n)
 
-x.train <- x[1:750,]
+x.train <- x[1:750, ]
 y.train <- y[1:750]
-x.test  <- x[751:1000,]
-y.test  <- y[751:1000]
+x.test <- x[751:1000, ]
+y.test <- y[751:1000]
 
 fit(x.train, y.train, x.test, y.test, method = "lm")
 }

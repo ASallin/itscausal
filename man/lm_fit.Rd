@@ -2,7 +2,7 @@
 % Please edit documentation in R/DEPRECATED_lm_fit.r
 \name{lm_fit}
 \alias{lm_fit}
-\title{This function estimates random forest lasso regression based on the \code{\link{ranger}} package}
+\title{This function estimates linear regressions based on the \code{\link{lm}} function}
 \usage{
 lm_fit(x, y, args = list())
 }
@@ -14,6 +14,6 @@ lm_fit(x, y, args = list())
 \item{args}{List of arguments passed to  \code{\link{ranger}}}
 }
 \description{
-This function estimates random forest lasso regression based on the \code{\link{ranger}} package
+This function estimates linear regressions based on the \code{\link{lm}} function
 }
 \keyword{internal}

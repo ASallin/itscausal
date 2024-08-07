@@ -57,19 +57,33 @@
 #'   data = df, time = "time", INDEX = 40, covariates_time = c("year"), key = "id",
 #'   y = "y"
 #' )
-forecastITS <- function(data, time, key, y,
-                        INDEX = 0L, WINDOW = NULL,
+forecastITS <- function(data,
+                        time,
+                        key,
+                        y,
+                        INDEX = 0L,
+                        WINDOW = NULL,
                         STEPS = NULL,
                         covariates_time, covariates_fix = NULL, covariates_var = NULL,
-                        method = c("lm", "rf", "xgboost"), K = 5, CYCLE = 12L, FORECASTUNITS = NULL) {
+                        method = c("lm", "rf", "xgboost"),
+                        K = 5,
+                        FORECASTUNITS = NULL) {
   cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
 
-  # Preparation
-  if (is.null(WINDOW)) WINDOW <- as.integer(floor(abs(INDEX - min(data[, time])) - 2))
-  if (is.null(STEPS)) STEPS <- as.integer(abs(INDEX - WINDOW) - 1)
+
+  # Preparation of time structure
+  n_time_periods <- max(data[, time]) - min(data[, time])
+
+  if (is.null(STEPS)) STEPS <- 5L
+  # if (is.null(STEPS)) STEPS <- as.integer(abs(INDEX - WINDOW) - 1)
+  if (is.null(WINDOW)) WINDOW <- as.integer(floor(abs(INDEX - min(data[, time])) - STEPS - 1))
+  if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) - INDEX
+  # if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) + STEPS
+  if (WINDOW + STEPS > INDEX - min(data[, time])) stop("Window and Steps are too long. Pick a smaller window.")
 
   window <- WINDOW
   steps <- STEPS
+
   vars <- c(time, y, key)
   if (!is.null(covariates_fix)) {
     vars <- c(vars, covariates_fix)
@@ -93,10 +107,14 @@ forecastITS <- function(data, time, key, y,
     stop("Some variables are not found in the data.")
   }
 
-
   if (nrow(na.omit(data)) != nrow(data)) {
     stop("NAs have been found. Please remove.")
   }
+
+  # If the difference between the n_period_before - (window + steps) * number of people is <
+  # (INDEX - min(data[, time])) - (window + steps)
+  # INDEX - min(data[, time])
+  # if ()
 
   # Check whether balanced panel
   if (min(data[, .N, by = key]$N) != length(unique(data$time))) {
@@ -104,8 +122,6 @@ forecastITS <- function(data, time, key, y,
     data <- expandITS(data, key, y, time, covariates_time, covariates_fix)
   }
 
-  # Number of forecast units
-  if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) + steps
 
   # Prepare folds for cross-validation
   data[, "cv"] <- crossValidateITS(data, id = key, k = K)
@@ -114,7 +130,7 @@ forecastITS <- function(data, time, key, y,
 
   dat <- flattenDataITS(
     data = data,
-    index = c(0:(index_max)),
+    index = c(0:index_max),
     WINDOW = window,
     STEPS = steps,
     time = time,
@@ -134,7 +150,8 @@ forecastITS <- function(data, time, key, y,
   for (i in 1:K) {
     message(i, "...")
 
-    exclude_x <- !names(dat) %in% c(key, time, "cv", y)
+    exclude_x <- !names(dat) %in% c(key, "cv", y)
+    # exclude_x <- !names(dat) %in% c(key, time, "cv", y)
 
     x.train <- dat[dat$cv != i, exclude_x]
     x.test <- dat[dat$cv == i, exclude_x]
@@ -154,7 +171,7 @@ forecastITS <- function(data, time, key, y,
     # we have the observed y as well as the covariates_var.
     pred <- flattenDataITS(
       data = data[data$cv == i, ],
-      index = c(0:-FORECASTUNITS),
+      index = c(STEPS:-(FORECASTUNITS + STEPS - 1)),
       WINDOW = window,
       STEPS = steps,
       time = time,
@@ -165,13 +182,14 @@ forecastITS <- function(data, time, key, y,
       } else {
         c(covariates_fix, "cv")
       },
-      key = key, y = y
+      key = key,
+      y = y
     )
 
     # Predict on x.test using multiple-steps forecast
     models <- results$models
     lPred <- split(pred, pred$time)
-    lPred <- lapply(lPred, function(x) x[, exclude_x])
+    lPred <- lapply(lPred, function(x) x[, !names(x) %in% c(key, "cv", y)])
     RMSEweights <- results[[2]]
 
     predictionList <- list()
@@ -183,7 +201,10 @@ forecastITS <- function(data, time, key, y,
 
       # Predict on x using models
       for (jj in models) {
-        prediction <- cbind(prediction, predict(jj, x = lPred[[ii]]))
+        prediction <- cbind(
+          prediction,
+          predict.MLModelITS(jj, x = lPred[[ii]])
+        )
       }
 
       colnames(prediction) <- sapply(models, function(x) x@type)
@@ -197,10 +218,22 @@ forecastITS <- function(data, time, key, y,
       predictionList[[ii]] <- prediction
 
       # One-step-ahead: replace LAG1 for y in the next x.pred in wide
+      # if (ii == length(lPred)) {
+      #   break
+      # } else {
+      #   lPred[[ii + 1]]$LAG1 <- as.numeric(prediction)
+
       if (ii == length(lPred)) {
         break
       } else {
-        lPred[[ii + 1]]$LAG1 <- as.numeric(prediction)
+        for (lag in 1:window) {
+          lag_name <- paste0("LAG", lag)
+          if (lag == 1) {
+            lPred[[ii + 1]][[lag_name]] <- as.numeric(prediction)
+          } else {
+            lPred[[ii + 1]][[lag_name]] <- lPred[[ii]][[paste0("LAG", lag - 1)]]
+          }
+        }
       }
     }
 
@@ -247,7 +280,6 @@ forecastITS <- function(data, time, key, y,
       "y" = y,
       "method" = method,
       "K" = K,
-      "CYCLE" = CYCLE,
       "FORECASTUNITS" = FORECASTUNITS
     )
   )
