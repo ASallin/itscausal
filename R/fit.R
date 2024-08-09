@@ -33,8 +33,9 @@
 #'
 #' fit(x.train, y.train, x.test, y.test, method = "lm")
 fit <- function(x.train, y.train, x.test, y.test,
-                binary = F, method = c("lasso", "lm", "rf", "xgboost")) {
-    # method <- match.arg(method)
+                binary = F,
+                method = c("lasso", "lm", "rf", "xgboost"),
+                optim = FALSE) {
     if (binary == T) {
         family <- "binomial"
     } else {
@@ -66,11 +67,55 @@ fit <- function(x.train, y.train, x.test, y.test,
                 classification = FALSE,
                 importance = "impurity"
             )
-        } else if ("xgboost" %in% ii) {
+        } else if ("xgboost" %in% ii & isFALSE(optim)) {
             args <- list(
                 max.depth = 5,
                 eta = 1, nthread = 2, nrounds = 9, objective = "reg:squarederror"
             )
+        } else if ("xgboost" %in% ii & isTRUE(optim)) {
+            grid <- expand.grid(
+                max_depth = c(5, 7, 9),
+                eta = c(0.01, 0.1, 0.3),
+                nthread = 2,
+                nrounds = c(50, 150, 300),
+                objective = "reg:squarederror"
+            )
+            t <- apply(grid, 1, function(row) {
+                list(
+                    max_depth = as.numeric(row["max_depth"]),
+                    eta = as.numeric(row["eta"]),
+                    nthread = as.numeric(row["nthread"]),
+                    nrounds = as.numeric(row["nrounds"]),
+                    objective = as.character(row["objective"])
+                )
+            })
+
+            predlist <- list()
+
+            warning("Optimizing hyperparameters for xgboost.")
+
+            predList <- lapply(
+                t,
+                function(x) {
+                    model <- MLModelITS(NULL, ii)
+                    model <- train(model,
+                        y = y.train,
+                        x = x.train,
+                        tuning_params = x
+                    )
+                }
+            )
+
+            # Predict on train sample
+            m_rmse <- lapply(predList, predict, x = x.train)
+
+            # Minimal RMSE
+            winner <- which.min(lapply(
+                lapply(m_rmse, error, y = y.train),
+                function(x) x$err
+            ))
+
+            args <- t[winner][[1]]
         }
 
         # Create instance of S4 object

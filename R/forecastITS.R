@@ -22,6 +22,7 @@
 #' Possible methods are c("lm", "rf"m "xgboost").
 #' @param K is the number of folds for the k-fold cross-validation technique.
 #' Default is K = 5.
+#' @param optim is TRUE if optimization of hyperparameters is wanted.
 #'
 #' @import stats
 #' @return
@@ -67,7 +68,8 @@ forecastITS <- function(data,
                         covariates_time, covariates_fix = NULL, covariates_var = NULL,
                         method = c("lm", "rf", "xgboost"),
                         K = 5,
-                        FORECASTUNITS = NULL) {
+                        FORECASTUNITS = NULL,
+                        optim = FALSE) {
   cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
 
 
@@ -163,7 +165,8 @@ forecastITS <- function(data,
       x.test = x.test,
       y.train = y.train,
       y.test = y.test,
-      method = method
+      method = method,
+      optim = optim
     )
 
     # Predict for future (from INDEX - steps to ForecastUNITS)

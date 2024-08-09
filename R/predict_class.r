@@ -52,7 +52,6 @@ setClass("MLModelITS",
 #' @export
 #'
 #' @examples
-
 MLModelITS <- function(model, type) {
   new("MLModelITS", model = model, type = type)
 }
@@ -66,7 +65,6 @@ MLModelITS <- function(model, type) {
 #' @export
 #'
 #' @examples
-#'
 train <- function(object, ...) {
   UseMethod("train")
 }
@@ -84,44 +82,43 @@ train <- function(object, ...) {
 #' @export
 #' @importFrom methods new slot
 #' @examples
-#'
-
 train.MLModelITS <- function(object, x, y, tuning_params = NULL, ...) {
-
-    model_type <- slot(object, "type")
+  model_type <- slot(object, "type")
 
   if (model_type == "rf") {
     data.ranger <- as.data.frame(cbind(y, x))
     names(data.ranger)[1] <- "y"
 
-    object@model <- do.call(ranger::ranger,
-                                c(list(paste("y ~ ."),
-                                data = data.ranger),
-                            tuning_params))
-
+    object@model <- do.call(
+      ranger::ranger,
+      c(
+        list(paste("y ~ ."),
+          data = data.ranger
+        ),
+        tuning_params
+      )
+    )
   } else if (model_type == "lm") {
     data.ols <- as.data.frame(cbind(y, x))
     names(data.ols)[1] <- "y"
 
     object@model <- lm(y ~ ., data = data.ols, ...)
-    #lm(y ~ . -season + as.factor(season), data = data.ols)  |> summary()
-
   } else if (model_type == "lasso") {
     # data.lasso <- as.data.frame(cbind(y, x))
     # names(data.lasso)[1] <- "y"
     # object@model <- glmnet::glmnet(x, y, alpha = 1, ...)
-
   } else if (model_type == "xgboost") {
     if (is.null(tuning_params)) {
-
       object@model <- xgboost::xgboost(data = x, label = y, nrounds = 3, verbose = 0, ...)
-
     } else {
-        object@model <- do.call(xgboost::xgboost,
-                                c(list(data = x, label = y, verbose = 0),
-                                tuning_params))
+      object@model <- do.call(
+        xgboost::xgboost,
+        c(
+          list(data = x, label = y, verbose = 0),
+          tuning_params
+        )
+      )
     }
-
   } else {
     stop("Unsupported model type")
   }
@@ -143,28 +140,20 @@ train.MLModelITS <- function(object, x, y, tuning_params = NULL, ...) {
 
 # Predict method for the MLModel class
 predict.MLModelITS <- function(object, x, xnew = NULL, ...) {
+  model_type <- slot(object, "type")
 
-    model_type <- slot(object, "type")
+  if (is.null(xnew)) xnew <- x
+  data <- as.data.frame(xnew)
 
-    if (is.null(xnew)) xnew <- x
-    data <- as.data.frame(xnew)
-
-    if (model_type == "rf") {
-        return(predict(object@model, data, type = "response")$predictions)
-
-    } else if (model_type == "lm") {
-        return(suppressWarnings(as.vector(predict(object@model, newdata = data))))
-
-    } else if (model_type == "lasso") {
-        # return(predict(object@model, newx = data))
-
-    } else if (model_type == "xgboost") {
-        return(predict(object@model, as.matrix(data)))
-
-    } else {
-        stop("Unsupported model type")
-    }
+  if (model_type == "rf") {
+    return(predict(object@model, data, type = "response")$predictions)
+  } else if (model_type == "lm") {
+    return(suppressWarnings(as.vector(predict(object@model, newdata = data))))
+  } else if (model_type == "lasso") {
+    # return(predict(object@model, newx = data))
+  } else if (model_type == "xgboost") {
+    return(predict(object@model, as.matrix(data)))
+  } else {
+    stop("Unsupported model type")
+  }
 }
-
-
-
