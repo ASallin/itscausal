@@ -202,6 +202,11 @@ fore_y_simple <- forecastITS(
   method = c("lm", "xgboost"),
   K = 5
 )
+#> Df has 99time periods.
+#> The intervention happens at period 0 (index). 
+#> The fit will be tested on 5 periods (steps) before the intervention.
+#> The time window to train the models has36 periods (window).
+#> The prediction space for forecasting is20 periods.
 #> 1...
 #> 2...
 #> 3...
@@ -221,6 +226,11 @@ fore_y_ar <- forecastITS(
   method = c("lm", "xgboost"),
   K = 5
 )
+#> Df has 99time periods.
+#> The intervention happens at period 0 (index). 
+#> The fit will be tested on 5 periods (steps) before the intervention.
+#> The time window to train the models has36 periods (window).
+#> The prediction space for forecasting is20 periods.
 #> 1...
 #> 2...
 #> 3...
@@ -240,6 +250,11 @@ fore_y_arma <- forecastITS(
   method = c("lm", "xgboost"),
   K = 5
 )
+#> Df has 99time periods.
+#> The intervention happens at period 0 (index). 
+#> The fit will be tested on 5 periods (steps) before the intervention.
+#> The time window to train the models has36 periods (window).
+#> The prediction space for forecasting is20 periods.
 #> 1...
 #> 2...
 #> 3...
@@ -259,6 +274,11 @@ fore_y_heteroskedastic <- forecastITS(
   method = c("lm", "xgboost"),
   K = 5
 )
+#> Df has 99time periods.
+#> The intervention happens at period 0 (index). 
+#> The fit will be tested on 5 periods (steps) before the intervention.
+#> The time window to train the models has36 periods (window).
+#> The prediction space for forecasting is20 periods.
 #> 1...
 #> 2...
 #> 3...
@@ -272,25 +292,25 @@ dfFinal_heteroskedastic <- fore_y_heteroskedastic$out
 ```
 
     #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> Warning: Removed 74 rows containing missing values or values outside the scale range
     #> (`geom_line()`).
 
 <img src="man/figures/README-graphML-1.png" width="100%" />
 
     #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> Warning: Removed 74 rows containing missing values or values outside the scale range
     #> (`geom_line()`).
 
 <img src="man/figures/README-graphML-2.png" width="100%" />
 
     #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> Warning: Removed 74 rows containing missing values or values outside the scale range
     #> (`geom_line()`).
 
 <img src="man/figures/README-graphML-3.png" width="100%" />
 
     #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 70 rows containing missing values or values outside the scale range
+    #> Warning: Removed 74 rows containing missing values or values outside the scale range
     #> (`geom_line()`).
 
 <img src="man/figures/README-graphML-4.png" width="100%" />

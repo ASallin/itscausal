@@ -250,8 +250,7 @@ fore_y_simple <- forecastITS(
   key = "ID",
   y = "y_simple",
   method = c("lm", "xgboost"),
-  K = 5,
-  optim = TRUE
+  K = 5
 )
 
 fore_y_ar <- forecastITS(
