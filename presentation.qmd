@@ -1,0 +1,458 @@
+---
+title: "itscausal"
+subtitle: "a package for flexible estimation of interrupted time series"
+author: "Aurélien Sallin, Tobias Müller, Daniel Ammann"
+format: 
+  revealjs:
+    width: 1280
+    height: 720
+    smaller: true
+    embed-resources: true
+    self-contained: true
+    slide-number: c
+    theme: moon
+    transition: slide
+    background-transition: fade
+highlight-style: dracula # style to highlight code. Set background color in theme
+---
+
+```{r, echo = FALSE}
+library(itscausal)
+library(data.table)
+library(dplyr)
+library(ggplot2)
+
+set.seed(234493)
+```
+
+
+## Simulation: Introduction
+
+We simulate three processes (changes in the error structure):
+
+1. AR Process
+```{r, echo = TRUE}
+ar_process <- function(n, phi = 0.7, sigma = 1) {
+  e <- rnorm(n, 0, sigma)
+  x <- numeric(n)
+  x[1] <- e[1]
+  for (t in 2:n) {
+    x[t] <- phi * x[t - 1] + e[t]
+  }
+  return(x)
+}
+```
+
+2. ARMA Process
+3. Process with heteroskedastic errors
+
+
+
+## Simulation: Introduction
+
+We simulate three processes (changes in the error structure):
+
+1. AR Process
+2. ARMA Process
+```{r, echo = TRUE}
+arma_process <- function(n, ar = 0.7, ma = 0.3, sigma = 1) {
+  e <- rnorm(n, 0, sigma)
+  x <- numeric(n)
+  x[1] <- e[1]
+  for (t in 2:n) {
+    x[t] <- ar * x[t - 1] + e[t] + ma * e[t - 1]
+  }
+  return(x)
+}
+```
+3. Process with heteroskedastic errors
+
+
+
+## Simulation: Introduction
+
+We simulate three processes (changes in the error structure):
+
+1. AR Process
+2. ARMA Process
+3. Process with heteroskedastic errors
+```{r, echo = TRUE}
+heteroskedastic_errors <- function(n, base_sigma = 1, increase_rate = 0.1) {
+  sigma <- base_sigma + increase_rate * (1:n)
+  return(rnorm(n, 0, sigma))
+}
+```
+
+
+## Data generation
+
+```{r, echo = TRUE}
+# Generate simulated dataset
+n_time <- 100 # Number of time points
+intervention <- round(0.8 * n_time) # Time point of intervention
+n_id <- 60 # Number of unique individuals
+constant <- 1
+
+X <- sample(c(0, 1), n_id, T)
+param_timetrend <- 0.07
+param_dummyintervention <- -0.15
+param_slopeintervention <- -0.10
+
+# Seasonality
+season_effect <- c(
+  0,
+  rnorm(2, 0, 4),
+  rnorm(4, -2, 0.5),
+  rnorm(3, 0, 1)
+)
+```
+
+
+## Simulate an ITS
+
+```{r, echo = TRUE}
+df <- data.frame(
+  ID = rep(seq(1:n_id), each = n_time),
+  X = rep(X, each = n_time),
+  season = rep(
+    c(rep(1:12, n_time %/% 12), (1:12)[1:(n_time %% 12)]),
+    n_id
+  ),
+  id.effect = rep(rnorm(n_id, 0, 10), each = n_time),
+  season_effect = rep(season_effect, times = n_time),
+  post = rep(c(rep(0, intervention), rep(1, 0.2 * n_time)), n_id),
+  time = rep((1:n_time) - intervention, n_id),
+  error_simple = rnorm(n_time * n_id, 0, 2),
+  error_ar = unlist(replicate(n_id, ar_process(n_time, sigma = 2), simplify = FALSE)),
+  error_arma = unlist(replicate(n_id, arma_process(n_time), simplify = FALSE)),
+  error_heteroskedastic = unlist(replicate(n_id, heteroskedastic_errors(n_time), simplify = FALSE))
+)
+
+df$abs_time <- df$time + abs(min(df$time))
+```
+
+
+```{r, echo = FALSE}
+# Generate y with different error structures
+df$y_simple <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_simple
+)
+
+df$y_ar <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_ar
+)
+
+df$y_arma <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_arma
+)
+
+df$y_heteroskedastic <- with(
+  df,
+  constant + param_timetrend * abs_time
+    + (param_dummyintervention * post)
+    + param_slopeintervention * post * abs_time
+    + 0.2 * X
+    + season_effect
+    + error_heteroskedastic
+)
+
+df <- data.table(df)
+
+
+# Simulate y with seasonal effects
+df <- df[
+  , `:=`(
+    model = constant
+    + param_timetrend * (abs_time)
+      + season_effect
+      + 0.2 * X,
+    forecast = constant
+    + param_timetrend * abs_time
+      + param_dummyintervention * post
+      + param_slopeintervention * abs_time * post
+      + season_effect
+      + 0.2 * X
+      + 0.03 * X * param_slopeintervention
+  )
+]
+```
+
+
+## Visualize the simulated DGP
+
+```{r graph, echo = FALSE}
+# Graph
+df %>%
+  group_by(time, post) %>%
+  summarise(
+    y_simple = mean(y_simple),
+    y_ar = mean(y_ar),
+    y_arma = mean(y_arma),
+    y_heteroskedastic = mean(y_heteroskedastic),
+    model = mean(model),
+    forecast = mean(forecast)
+  ) %>%
+  ggplot(aes(x = time)) +
+  geom_line(aes(y = y_simple), col = "#1c1cdd") +
+  geom_line(aes(y = model), col = "#fa1420") +
+  geom_line(aes(y = forecast), size = 1, col = "#066613") +
+  geom_line(aes(y = y_ar), col = "#030366") +
+  geom_line(aes(y = y_arma), col = "#ad5a5e66") +
+  geom_line(aes(y = y_heteroskedastic), col = "#bb49be66") +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+```
+
+
+## Compute ATE
+
+```{r, echo = TRUE}
+# Compute effects
+df <- df[, ite := ifelse(post == 0, NA, model - forecast)]
+ate5 <- mean(df[time < 6 & post == 1, ]$ite)
+ate1 <- mean(df[time < 2 & post == 1, ]$ite)
+
+print(ate5)
+print(ate1)
+```
+
+
+## We can reproduce these results using the `itscausal` package.
+
+```{r itscausal, echo = TRUE, cache=TRUE}
+window <- 36L # define window of time
+
+fore_y_simple <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L, # time of the intervention
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"), # define seasonality
+  covariates_fix = c("X"), # define covariates
+  key = "ID", # define the unit of observation
+  y = "y_simple",
+  method = c("lm", "xgboost"), # define method.
+  K = 5 # define the number of cross-validation folds
+  # optim = TRUE # whether or not the algorithm is optimized
+)
+```
+
+```{r, echo = FALSE, cache = TRUE}
+fore_y_ar <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_ar",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+
+fore_y_arma <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_arma",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+
+fore_y_heteroskedastic <- forecastITS(
+  data = df,
+  time = "time",
+  INDEX = 0L,
+  WINDOW = window,
+  STEPS = 5,
+  covariates_time = c("season"),
+  covariates_fix = c("X"),
+  key = "ID",
+  y = "y_heteroskedastic",
+  method = c("lm", "xgboost"),
+  K = 5
+)
+
+dfFinal_simple <- fore_y_simple$out
+dfFinal_ar <- fore_y_ar$out
+dfFinal_arma <- fore_y_arma$out
+dfFinal_heteroskedastic <- fore_y_heteroskedastic$out
+```
+
+
+## Graph
+
+```{r graphML, echo = FALSE}
+dfFinal_arma %>%
+  right_join(df) %>%
+  group_by(time) %>%
+  summarise(y = mean(y_arma), y.pred = mean(y_arma_hat)) %>%
+  ggplot(aes(y = y, x = time)) +
+  geom_line() +
+  geom_line(aes(y = y.pred, x = time), color = "red") +
+  geom_line(
+    aes(
+      x = time,
+      y = constant + param_timetrend * (time + abs(min(df$time)))
+        + season_effect
+    ),
+    col = "#e95a08", linetype = 3, size = 1
+  ) +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period",
+    title = "Example with ARMA model"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+```
+
+
+```{r, echo = FALSE, eval = FALSE}
+dfFinal_simple %>%
+  right_join(df) %>%
+  group_by(time) %>%
+  summarise(y = mean(y_simple), y.pred = mean(y_simple_hat)) %>%
+  ggplot(aes(y = y, x = time)) +
+  geom_line() +
+  geom_line(aes(y = y.pred, x = time), color = "red") +
+  geom_line(
+    aes(
+      x = time,
+      y = constant + param_timetrend * (time + abs(min(df$time)))
+        + season_effect
+    ),
+    col = "#e95a08", linetype = 3, size = 1
+  ) +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period"
+    ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+
+dfFinal_ar %>%
+  right_join(df) %>%
+  group_by(time) %>%
+  summarise(y = mean(y_ar), y.pred = mean(y_ar_hat)) %>%
+  ggplot(aes(y = y, x = time)) +
+  geom_line() +
+  geom_line(aes(y = y.pred, x = time), color = "red") +
+  geom_line(
+    aes(
+      x = time,
+      y = constant + param_timetrend * (time + abs(min(df$time)))
+        + season_effect
+    ),
+    col = "#e95a08", linetype = 3, size = 1
+  ) +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+
+
+dfFinal_arma %>%
+  right_join(df) %>%
+  group_by(time) %>%
+  summarise(y = mean(y_arma), y.pred = mean(y_arma_hat)) %>%
+  ggplot(aes(y = y, x = time)) +
+  geom_line() +
+  geom_line(aes(y = y.pred, x = time), color = "red") +
+  geom_line(
+    aes(
+      x = time,
+      y = constant + param_timetrend * (time + abs(min(df$time)))
+        + season_effect
+    ),
+    col = "#e95a08", linetype = 3, size = 1
+  ) +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+
+dfFinal_heteroskedastic %>%
+  right_join(df) %>%
+  group_by(time) %>%
+  summarise(y = mean(y_heteroskedastic), y.pred = mean(y_heteroskedastic_hat)) %>%
+  ggplot(aes(y = y, x = time)) +
+  geom_line() +
+  geom_line(aes(y = y.pred, x = time), color = "red") +
+  geom_line(
+    aes(
+      x = time,
+      y = constant + param_timetrend * (time + abs(min(df$time)))
+        + season_effect
+    ),
+    col = "#e95a08", linetype = 3, size = 1
+  ) +
+  labs(
+    x = "Time to/from the intervention",
+    y = "Average y per time period"
+  ) +
+  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+  theme_classic()
+```
+
+
+
+## Compute the instantaneous treatment effect for the whole population
+
+```{r InstATE}
+iteM <- iteITS(forecast.object = fore_y_arma)
+
+InstAte <- ateITS(fore_y_arma, ite.object = iteM)
+InstATE <- InstAte$InstATE
+
+ggplot(InstATE$pred, aes(x = time, y = ite)) +
+  geom_bar(stat = "identity")
+```
+
+
+## Per groupdf: arma
+```{r ate}
+ate1its <- ateITS(fore_y_arma, iteM, n.periods = 1)
+paste("ARMA (1 period): mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
+
+ate5its <- ateITS(fore_y_arma, iteM, n.periods = 5)
+paste("ARMA (5 periods): mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
+
+ate1
+ate5
+```
+
