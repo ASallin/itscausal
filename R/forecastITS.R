@@ -70,30 +70,48 @@ forecastITS <- function(data,
                         K = 5,
                         FORECASTUNITS = NULL,
                         optim = FALSE) {
-  cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
 
+  # Define variables
+  cv <- ID <- rbindlist <- NULL # due to NSE notes in R CMD check
+  data <- data.table(data)
 
   # Preparation of time structure
+  data <- data[, time := time - INDEX]
+  index <-  0L
+
+  minTime = min(data[, time])
+  maxTime = max(data[, time])
   n_time_periods <- max(data[, time]) - min(data[, time])
 
   if (is.null(STEPS)) STEPS <- 5L
-  # if (is.null(STEPS)) STEPS <- as.integer(abs(INDEX - WINDOW) - 1)
-  if (is.null(WINDOW)) WINDOW <- as.integer(floor(abs(INDEX - min(data[, time])) - STEPS - 1))
-  if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) - INDEX
-  # if (is.null(FORECASTUNITS)) FORECASTUNITS <- max(data[, time]) + STEPS
-  if (WINDOW + STEPS > INDEX - min(data[, time])) stop("Window and Steps are too long. Pick a smaller window.")
+  if (is.null(WINDOW)) WINDOW <- abs(minTime - (index-STEPS)) - 1
+  if (is.null(FORECASTUNITS)) FORECASTUNITS <- maxTime
+  if (WINDOW + STEPS > index - minTime) stop("Window and Steps are too long. Pick a smaller window.")
 
   window <- WINDOW
   steps <- STEPS
 
+  # What is the minimal index possible for training. If max window possible, then
+  # the minimal index is 1
+  index_min <- minTime + steps + window
+
+  message(
+    "Df has ", n_time_periods, "time periods.",
+    "\nThe intervention happens at period ", INDEX, " (index). \nThe fit will be tested on ",
+    STEPS, " periods (steps) before the intervention.\nThe time window to train the models has",
+    WINDOW, " periods (window).\nThe prediction space for forecasting is",
+    FORECASTUNITS, " periods."
+  )
+
+  # Prepare data
   vars <- c(time, y, key)
+
   if (!is.null(covariates_fix)) {
     vars <- c(vars, covariates_fix)
   }
   if (!is.null(covariates_var)) {
     vars <- c(vars, covariates_var)
   }
-
   if (is.null(covariates_time)) {
     data$timeCOV <- data[[time]]
     covariates_time <- c("timeCOV")
@@ -102,9 +120,24 @@ forecastITS <- function(data,
   vars <- c(vars, covariates_time)
   data <- data.table(data)
   data <- data[, ..vars]
-  data <- data[, time := time - INDEX]
+
 
   # Warnings and errors
+  # Test variation in each time covariate for each indexed dataframe. If no
+  # variation (nlevels = 1), then stop.
+  check <- list()
+  for (ii in c(0:index_min)){
+
+    cond <- data[[time]]  == ii
+    check[[length(check) + 1]]  <- data[cond,][, ..covariates_time, drop = FALSE]
+
+  }
+  check <- do.call(rbind, check)
+  if(min(apply(check, 2, function(x) length(levels(as.factor(x))))) == 1){
+    stop("There must be variation in time covariates (levels of factors must be >= 2). Have the time
+           covariates with low variation in covariates_var. Or reduce the window/reduce the steps.")
+  }
+
   if (!all(vars %in% colnames(data))) {
     stop("Some variables are not found in the data.")
   }
@@ -113,14 +146,9 @@ forecastITS <- function(data,
     stop("NAs have been found. Please remove.")
   }
 
-  # If the difference between the n_period_before - (window + steps) * number of people is <
-  # (INDEX - min(data[, time])) - (window + steps)
-  # INDEX - min(data[, time])
-  # if ()
-
   # Check whether balanced panel
   if (min(data[, .N, by = key]$N) != length(unique(data$time))) {
-    warning("It seems that you don't have a balanced panel. Please have a look at your df.")
+    warning("Warning: It seems that you don't have a balanced panel. Please have a look at your df.")
     data <- expandITS(data, key, y, time, covariates_time, covariates_fix)
   }
 
@@ -128,11 +156,10 @@ forecastITS <- function(data,
   # Prepare folds for cross-validation
   data[, "cv"] <- crossValidateITS(data, id = key, k = K)
 
-  index_max <- abs(min(data[[time]])) - (window + steps)
-
+  # Re-shape data at each level of index
   dat <- flattenDataITS(
     data = data,
-    index = c(0:index_max),
+    index = c(0:index_min),
     WINDOW = window,
     STEPS = steps,
     time = time,
@@ -174,7 +201,7 @@ forecastITS <- function(data,
     # we have the observed y as well as the covariates_var.
     pred <- flattenDataITS(
       data = data[data$cv == i, ],
-      index = c(STEPS:-(FORECASTUNITS + STEPS - 1)),
+      index = c((-STEPS):FORECASTUNITS),
       WINDOW = window,
       STEPS = steps,
       time = time,
@@ -206,7 +233,7 @@ forecastITS <- function(data,
       for (jj in models) {
         prediction <- cbind(
           prediction,
-          predict.MLModelITS(jj, x = lPred[[ii]])
+          predict.MLModelITS(object = jj, x = lPred[[ii]])
         )
       }
 

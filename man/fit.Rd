@@ -10,7 +10,8 @@ fit(
   x.test,
   y.test,
   binary = F,
-  method = c("lasso", "lm", "rf", "xgboost")
+  method = c("lasso", "lm", "rf", "xgboost"),
+  optim = FALSE
 )
 }
 \arguments{

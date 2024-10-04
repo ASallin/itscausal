@@ -17,7 +17,8 @@ forecastITS(
   covariates_var = NULL,
   method = c("lm", "rf", "xgboost"),
   K = 5,
-  FORECASTUNITS = NULL
+  FORECASTUNITS = NULL,
+  optim = FALSE
 )
 }
 \arguments{
@@ -52,6 +53,8 @@ Possible methods are c("lm", "rf"m "xgboost").}
 
 \item{K}{is the number of folds for the k-fold cross-validation technique.
 Default is K = 5.}
+
+\item{optim}{is TRUE if optimization of hyperparameters is wanted.}
 }
 \description{
 Main function for the ITS. Uses cross-validation to perform "sliding-window" in
