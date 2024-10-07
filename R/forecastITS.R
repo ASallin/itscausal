@@ -154,7 +154,7 @@ forecastITS <- function(data,
 
 
   # Prepare folds for cross-validation
-  data[, "cv"] <- crossValidateITS(data, id = key, k = K)
+  data[, "cv"] <- crossValidateITS(data, id = key, k = K)[, "folds"]
 
   # Re-shape data at each level of index
   dat <- flattenDataITS(

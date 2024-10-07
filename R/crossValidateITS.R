@@ -1,12 +1,12 @@
 #' Cross validation function
 #'
-#' @param data Data. Will be converted into a ´data.frame' 
+#' @param data Data. Will be converted into a ´data.frame'
 #' @param id Unique identifier
 #' @param k Number of cross-validation folds
 #'
 #' @return
 #' @export
-#' 
+#'
 #' @importFrom data.table data.table
 #'
 #' @examples
@@ -17,15 +17,18 @@
 crossValidateITS <- function(data, id, k) {
 
     data <- data.table::data.table(data)
+    data <- data[, row_number := .I]  # create an order variable because merge reorders rows
     idKs <- as.matrix(unique(data[, ..id]))
     split <- runif(length(idKs))
 
     folds   <- as.numeric(cut(split, quantile(split, probs = seq(0, 1, 1/k)),
                             include.lowest = TRUE))
 
-    folds <- cbind(idKs, folds)
+    folds <- data.table(idKs, folds)
     folds <- merge(x = data, y = folds, by = id, all.x = TRUE)
-    folds <- folds[, "folds"]
+    folds <- folds[order(row_number)]
+
+    folds <- folds[, c("row_number", "folds")]
 
     return(folds)
 }
