@@ -28,17 +28,17 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
 
   # Prepare df
   selectCols <- c(key, time, y, covariates_time, covariates_fix, covariates_var)
-  dataReshape <- data[, selectCols]
+  data_out <- data[, selectCols]
 
 
   # Function to reshape
-  reshapeDataITS <- function(index, WINDOW, STEPS, dataReshape,
+  reshapeDataITS <- function(index, WINDOW, STEPS, dataToReshape,
                              covariates_fix = NULL,
                              covariates_time,
                              covariates_var = NULL) {
     # Keep observations with dates earlier than index but later than index - past_window
-    cond <- dataReshape[[time]] <= index-STEPS & dataReshape[[time]] >= ((index - STEPS) - WINDOW)
-    dataWindow <- dataReshape[cond, ]
+    cond <- dataToReshape[[time]] <= index-STEPS & dataToReshape[[time]] >= ((index - STEPS) - WINDOW)
+    dataWindow <- dataToReshape[cond, ]
 
     # Long to wide with sum aggregation
     if (is.null(covariates_fix) & is.null(covariates_var)) {
@@ -84,7 +84,7 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
 
     selectCols <- c("time", covariates_time)
     dfWide <- cbind(dfWide,
-                    dataReshape[dataReshape[[time]] == index - STEPS, selectCols]
+                    dataToReshape[dataToReshape[[time]] == index - STEPS, selectCols]
                     )
 
     # Return
@@ -94,7 +94,8 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
 
   # Reshape for each level of index
   dataFull <- lapply(index, reshapeDataITS,
-                     data = dataReshape, WINDOW = WINDOW, STEPS = STEPS,
+                     dataToReshape = data_out,
+                     WINDOW = WINDOW, STEPS = STEPS,
                      covariates_time = covariates_time,
                      covariates_fix = covariates_fix,
                      covariates_var = covariates_var
