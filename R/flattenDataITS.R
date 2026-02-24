@@ -102,15 +102,17 @@ flattenDataITS <- function(data, index, WINDOW, STEPS,
   )
   dataFull <- do.call(rbind, dataFull)
 
-  # Transform season variables to factor
+  # Transform season variables to factor, using all levels present in the full
+  # dataset so that train and predict calls always produce identical dummy columns.
   for (col in covariates_time) {
-      dataFull[[col]] <- as.factor(dataFull[[col]])
+      all_levels <- sort(unique(data[[col]]))
+      dataFull[[col]] <- factor(dataFull[[col]], levels = all_levels)
   }
 
   formula <- as.formula(paste("~", paste(covariates_time, collapse = " + "), "- 1"))
   time_dummies <- model.matrix(formula, data = dataFull)
   dataFull <- cbind(dataFull, time_dummies)
-  dataFull[[covariates_time]] <- NULL
+  for (col in covariates_time) dataFull[[col]] <- NULL
 
   return(as.data.frame(dataFull))
 }

@@ -1,0 +1,401 @@
+---
+title: "itscausal — User Manual"
+subtitle: "Causal estimation for interrupted time series using machine learning"
+author: "Aurelien Sallin"
+date: today
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    code-fold: false
+    theme: cosmo
+    self-contained: true
+execute:
+  warning: false
+  message: false
+  cache: false
+---
+
+## Overview
+
+`itscausal` estimates the causal effect of a policy intervention applied to a
+panel of units observed over time — an **interrupted time series (ITS)** design.
+
+The key idea: train ML models on the **pre-intervention** window to predict what
+each unit's outcome would have looked like *without* the intervention. The
+individual treatment effect (ITE) is the difference between observed and
+predicted (counterfactual) outcomes.
+
+The workflow is:
+
+1. **Simulate / load** a panel dataset in long format
+2. **`forecastITS()`** — sliding-window cross-validated forecast of the counterfactual
+3. **`iteITS()`** — compute per-unit, per-period treatment effects
+4. **`ateITS()`** — aggregate to average treatment effects (ATE)
+
+---
+
+## Setup
+
+```{r}
+#| label: setup
+devtools::load_all(quiet = TRUE)   # load package from source (no build needed)
+library(data.table)
+library(ggplot2)
+
+set.seed(20240101)
+```
+
+---
+
+## 1. Simulate data
+
+We generate a balanced panel of **n = 60 individuals** observed over **T = 72
+months** (6 years). The intervention occurs at month 60 (the start of year 6),
+leaving 12 post-intervention periods to estimate the effect.
+
+The data-generating process includes:
+
+- A positive linear time trend
+- Monthly seasonality
+- An individual fixed effect
+- An AR(1) error term
+- A binary group indicator `X` with a heterogeneous slope effect
+- A true treatment effect of **−3 units** applied as a level shift at the
+  intervention
+
+```{r}
+#| label: simulate
+
+# --- Parameters ---
+n_id          <- 60
+n_time        <- 72
+INDEX         <- 60L          # intervention at month 60
+true_effect   <- -3           # level shift
+
+# --- Helper: AR(1) process ---
+ar1 <- function(n, phi = 0.6, sigma = 1) {
+  e <- rnorm(n, 0, sigma)
+  x <- numeric(n)
+  x[1] <- e[1]
+  for (t in 2:n) x[t] <- phi * x[t - 1] + e[t]
+  x
+}
+
+# --- Individual-level draws ---
+X        <- sample(c(0, 1), n_id, replace = TRUE)   # binary group
+id_fx    <- rnorm(n_id, 0, 3)                        # individual fixed effect
+
+# --- Panel skeleton ---
+df <- data.table(
+  ID     = rep(seq_len(n_id), each = n_time),
+  time   = rep(seq_len(n_time), n_id),
+  X      = rep(X, each = n_time),
+  id_fx  = rep(id_fx, each = n_time)
+)
+
+# --- Seasonal pattern (monthly, period = 12) ---
+season_coefs <- c(0, 1.5, 2.8, 3.1, 2.4, 1.2, -0.5, -1.8, -2.1, -1.4, 0, 0.3)
+df[, month  := ((time - 1) %% 12) + 1]
+df[, year   := ((time - 1) %/% 12) + 1]
+df[, season := season_coefs[month]]
+
+# --- AR(1) errors (individual-specific) ---
+df[, error := unlist(replicate(n_id, ar1(n_time, phi = 0.5, sigma = 1.5),
+                               simplify = FALSE))]
+
+# --- Outcome ---
+df[, post := as.integer(time >= INDEX)]
+df[, y := 2 + 0.05 * time          # trend
+        + 0.8 * X                   # group effect
+        + season                    # seasonality
+        + id_fx                     # fixed effect
+        + true_effect * post        # treatment
+        + error]                    # noise
+
+# Centre time on the intervention (convention: pre = negative, post = positive)
+df[, time_c := time - INDEX]
+
+cat("Panel dimensions:", n_id, "units ×", n_time, "periods =", nrow(df), "rows\n")
+cat("Pre-intervention periods: ", sum(df$time_c < 0) / n_id, "\n")
+cat("Post-intervention periods:", sum(df$time_c >= 0) / n_id, "\n")
+```
+
+### Raw data plot
+
+```{r}
+#| label: fig-rawdata
+#| fig-cap: "Average outcome over time (group mean ± 1 SD). The dashed line marks the intervention."
+
+avg <- df[, .(mean_y = mean(y), sd_y = sd(y)), by = .(time, time_c)]
+
+ggplot(avg, aes(x = time_c, y = mean_y)) +
+  geom_ribbon(aes(ymin = mean_y - sd_y, ymax = mean_y + sd_y),
+              alpha = 0.15, fill = "steelblue") +
+  geom_line(colour = "steelblue", linewidth = 0.8) +
+  geom_vline(xintercept = 0, linetype = "dashed", colour = "firebrick") +
+  annotate("text", x = 1, y = max(avg$mean_y) - 0.5,
+           label = "Intervention", hjust = 0, colour = "firebrick", size = 3.5) +
+  labs(x = "Time relative to intervention (months)",
+       y = "Mean outcome (± 1 SD)") +
+  theme_classic()
+```
+
+---
+
+## 2. Forecast the counterfactual with `forecastITS()`
+
+`forecastITS()` is the main function. It:
+
+1. Reshapes the panel into a wide "lag" matrix (via `flattenDataITS`)
+2. Splits units into K cross-validation folds (via `crossValidateITS`)
+3. Trains the ensemble of ML models on each fold
+4. Uses multi-step-ahead forecasting to project the counterfactual
+
+Key arguments:
+
+| Argument | Meaning |
+|---|---|
+| `data` | Long-format panel (data.frame or data.table) |
+| `time` | Name of the time variable |
+| `key` | Name of the unit identifier |
+| `y` | Name of the outcome |
+| `INDEX` | Time period of the intervention |
+| `WINDOW` | Number of lags used as features |
+| `STEPS` | Pre-intervention periods held out for CV error assessment |
+| `covariates_time` | Time-varying covariates used as features (e.g. month, year) |
+| `covariates_fix` | Time-invariant unit covariates (e.g. group) |
+| `method` | Models to include: `"lm"`, `"rf"`, `"xgboost"` |
+| `K` | Number of cross-validation folds |
+
+```{r}
+#| label: forecast
+
+fore <- forecastITS(
+  data             = df,
+  time             = "time",
+  key              = "ID",
+  y                = "y",
+  INDEX            = INDEX,
+  WINDOW           = 24L,          # 2-year lag window
+  STEPS            = 6L,           # hold out 6 pre-periods for CV
+  covariates_time  = c("month", "year"),
+  covariates_fix   = c("X"),
+  method           = c("lm", "xgboost"),
+  K                = 5L
+)
+```
+
+### Ensemble weights
+
+The models are blended using inverse-RMSE weights estimated on the held-out
+pre-intervention periods:
+
+```{r}
+#| label: weights
+
+round(fore$RMSEweights, 3)
+```
+
+### Predicted vs observed (population average)
+
+```{r}
+#| label: fig-forecast
+#| fig-cap: "Population average: observed outcome (black) vs ML counterfactual forecast (red). Post-intervention gap is the estimated treatment effect."
+
+# Merge forecasts with original data
+dfOut <- fore$out                           # columns: ID, time, y_hat
+setDT(dfOut)
+setnames(dfOut, "time", "time_c")           # time was centred by forecastITS
+
+dfMerge <- merge(df[, .(ID, time_c, y)],
+                 dfOut[, .(ID, time_c, y_hat)],
+                 by = c("ID", "time_c"), all.x = TRUE)
+
+# Population average
+avg2 <- dfMerge[, .(y = mean(y), y_hat = mean(y_hat, na.rm = TRUE)), by = time_c]
+
+ggplot(avg2, aes(x = time_c)) +
+  geom_line(aes(y = y), colour = "black", linewidth = 0.8) +
+  geom_line(aes(y = y_hat), colour = "firebrick", linewidth = 0.8,
+            linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  scale_colour_manual(values = c("Observed" = "black", "Counterfactual" = "firebrick")) +
+  labs(x = "Time relative to intervention",
+       y = "Mean outcome",
+       colour = NULL) +
+  annotate("text", x = -20, y = min(avg2$y, na.rm = TRUE) + 0.3,
+           label = "Observed", hjust = 0, size = 3.5) +
+  annotate("text", x = 2, y = max(avg2$y_hat, na.rm = TRUE) - 0.5,
+           label = "Counterfactual", colour = "firebrick", hjust = 0, size = 3.5) +
+  theme_classic()
+```
+
+---
+
+## 3. Individual treatment effects with `iteITS()`
+
+`iteITS()` computes the **individual treatment effect** (ITE) for each unit and
+each post-intervention period:
+
+$$\text{ITE}_{it} = \hat{y}_{it}^{(0)} - y_{it}, \quad t > 0$$
+
+where $\hat{y}^{(0)}$ is the counterfactual prediction.
+
+```{r}
+#| label: ite
+
+iteM <- iteITS(forecast.object = fore)
+head(iteM$ites)
+```
+
+### ITE over time
+
+```{r}
+#| label: fig-ite
+#| fig-cap: "Mean ITE per post-intervention period (bar) ± 1 SD (error bar). The true effect is −3."
+
+# iteM$ites is grouped by (time, X); aggregate to population average for plotting
+ite_pop <- as.data.frame(iteM$ites)[, c("time", "ite", "sd")]
+ite_pop <- aggregate(cbind(ite, sd) ~ time, data = ite_pop, FUN = mean)
+
+ggplot(ite_pop, aes(x = time, y = ite)) +
+  geom_col(fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = ite - sd, ymax = ite + sd), width = 0.3) +
+  geom_hline(yintercept = true_effect, linetype = "dashed",
+             colour = "firebrick", linewidth = 0.8) +
+  annotate("text", x = max(ite_pop$time) - 0.5, y = true_effect + 0.25,
+           label = paste("True effect =", true_effect),
+           colour = "firebrick", hjust = 1, size = 3.5) +
+  labs(x = "Post-intervention period",
+       y = "ITE (predicted − observed)") +
+  theme_classic()
+```
+
+---
+
+## 4. Average treatment effects with `ateITS()`
+
+`ateITS()` aggregates ITEs into summary treatment effects:
+
+- **InstATE** — per-period average across units (time series of ATEs)
+- **TATE** — time-averaged ATE over the first `n.periods` post-intervention periods
+
+### Instantaneous ATE
+
+```{r}
+#| label: ate-inst
+
+ate_all <- ateITS(forecast.object = fore, ite.object = iteM)
+ate_all$InstATE$pred
+```
+
+### Time-averaged ATE (all post-intervention periods)
+
+```{r}
+#| label: tate-all
+
+n_post <- max(iteM$ites$time)
+ate_total <- ateITS(fore, iteM, n.periods = n_post)
+
+cat(sprintf(
+  "TATE over %d periods:  %.3f  (SD = %.3f)\nTrue effect: %.1f\n",
+  n_post,
+  ate_total$TATE$pred$ite,
+  ate_total$TATE$sd$sd,
+  true_effect
+))
+```
+
+### TATE for early vs later periods
+
+```{r}
+#| label: tate-split
+
+ate_early <- ateITS(fore, iteM, n.periods = 3)
+ate_late  <- ateITS(fore, iteM, n.periods = n_post)
+
+results <- data.frame(
+  Period    = c("First 3 months", paste("All", n_post, "months")),
+  TATE      = c(ate_early$TATE$pred$ite, ate_late$TATE$pred$ite),
+  SD        = c(ate_early$TATE$sd$sd,    ate_late$TATE$sd$sd)
+)
+results$lower <- results$TATE - 1.96 * results$SD
+results$upper <- results$TATE + 1.96 * results$SD
+results
+```
+
+---
+
+## 5. Heterogeneous effects by group
+
+Pass a `groups` argument to `ateITS()` to compute group-specific ATEs. Here we
+split by the binary covariate `X`. Because `X` must appear in the ITE table, it
+needs to be listed in `covariates_fix` when running `forecastITS()` (which we
+did above).
+
+```{r}
+#| label: gate
+
+ate_bygroup <- ateITS(fore, iteM, n.periods = n_post, groups = "X")
+
+ate_bygroup$TATE$pred
+```
+
+```{r}
+#| label: fig-gate
+#| fig-cap: "TATE by group (X = 0 vs X = 1) with 95% confidence interval. True effect is the same for both groups (−3)."
+
+gate_df <- cbind(ate_bygroup$TATE$pred, SD = ate_bygroup$TATE$sd$sd)
+gate_df$lower <- gate_df$ite - 1.96 * gate_df$SD
+gate_df$upper <- gate_df$ite + 1.96 * gate_df$SD
+gate_df$X <- factor(gate_df$X, labels = c("X = 0", "X = 1"))
+
+ggplot(gate_df, aes(x = X, y = ite)) +
+  geom_col(fill = "steelblue", alpha = 0.8, width = 0.5) +
+  geom_errorbar(aes(ymin = lower, ymax = upper), width = 0.15) +
+  geom_hline(yintercept = true_effect, linetype = "dashed",
+             colour = "firebrick", linewidth = 0.8) +
+  labs(x = "Group", y = "TATE") +
+  theme_classic()
+```
+
+---
+
+## 6. Parameter guide
+
+### Choosing `WINDOW`
+
+`WINDOW` is the number of lagged outcome values used as features. A window that
+spans one full seasonal cycle is a good default (e.g. `WINDOW = 12` for monthly
+data). Larger windows capture more history but reduce the number of training
+observations.
+
+### Choosing `STEPS`
+
+`STEPS` is the number of pre-intervention periods held out for cross-validation
+error assessment. These periods are *not* used for training. Values between 3
+and 12 are typical; at least one full seasonal cycle is recommended.
+
+**Constraint:** `WINDOW + STEPS` must be strictly less than the total number of
+pre-intervention periods.
+
+### Choosing `method`
+
+| Method | Notes |
+|---|---|
+| `"lm"` | Fast, interpretable; handles seasonality well when year/month dummies are included |
+| `"rf"` | Captures non-linearities; slower; good default for complex DGPs |
+| `"xgboost"` | Gradient boosting; often the strongest single learner |
+
+Using all three (`method = c("lm", "rf", "xgboost")`) invokes the **ensemble
+learner**, which blends predictions by inverse-RMSE weights.
+
+---
+
+## Session info
+
+```{r}
+#| label: session
+sessionInfo()
+```

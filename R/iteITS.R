@@ -44,15 +44,8 @@ iteITS <- function(forecast.object) {
   # We have multiple predictions per id per time period due to the structure of
   # stepcast. For now, average out all of them. Could also do a weighted average
   # given rmse, or given proximity to cut-off.
-  if (!is.null(covariates_fix)) {
-    vector_pred <- m[, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c(time, covariates_fix)]
-    vector_sd <- m[, lapply(.SD, "sd" = sd), by = c(time, covariates_fix), .SDcols = "ite"]
-  } else {
-    vector_pred <- m[, lapply(.SD, "mean" = mean), .SDcols = "ite", by = c(time)]
-    vector_sd <- m[, lapply(.SD, sd), by = c(time), .SDcols = "ite"][, .(sd = ite)]
-  }
-
-  iteM <- cbind(vector_pred, vector_sd)
+  by_cols <- if (!is.null(covariates_fix)) c(time, covariates_fix) else c(time)
+  iteM <- m[, .(ite = mean(ite), sd = stats::sd(ite)), by = by_cols]
 
   return(list(ites = iteM))
 }

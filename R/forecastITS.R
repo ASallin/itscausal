@@ -201,7 +201,7 @@ forecastITS <- function(data,
     # we have the observed y as well as the covariates_var.
     pred <- flattenDataITS(
       data = data[data$cv == i, ],
-      index = c((-STEPS):FORECASTUNITS),
+      index = c(index_min:FORECASTUNITS),
       WINDOW = window,
       STEPS = steps,
       time = time,
