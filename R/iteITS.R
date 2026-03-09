@@ -37,8 +37,8 @@ iteITS <- function(forecast.object) {
   m <- dplyr::left_join(data, t, by = c(key, time), multiple = "all")
   m <- na.omit(m)
 
-  # Compute ite as difference between prediction and observed value
-  m$ite <- m$prediction - m[[y]]
+  # Compute ite as difference between observed and predicted (counterfactual) value
+  m$ite <- m[[y]] - m$prediction
   m <- m[time > 0, ]
 
   # We have multiple predictions per id per time period due to the structure of

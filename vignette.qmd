@@ -39,7 +39,7 @@ The workflow is:
 
 ```{r}
 #| label: setup
-devtools::load_all(quiet = TRUE)   # load package from source (no build needed)
+devtools::load_all(quiet = TRUE)   # load package from source
 library(data.table)
 library(ggplot2)
 
@@ -188,8 +188,7 @@ fore <- forecastITS(
 
 ### Ensemble weights
 
-The models are blended using inverse-RMSE weights estimated on the held-out
-pre-intervention periods:
+The models are blended using inverse-RMSE weights estimated on the held-out pre-intervention periods:
 
 ```{r}
 #| label: weights
@@ -238,7 +237,7 @@ ggplot(avg2, aes(x = time_c)) +
 `iteITS()` computes the **individual treatment effect** (ITE) for each unit and
 each post-intervention period:
 
-$$\text{ITE}_{it} = \hat{y}_{it}^{(0)} - y_{it}, \quad t > 0$$
+$$\text{ITE}_{it} = y_{it} - \hat{y}_{it}^{(0)}, \quad t > 0$$
 
 where $\hat{y}^{(0)}$ is the counterfactual prediction.
 
@@ -249,26 +248,56 @@ iteM <- iteITS(forecast.object = fore)
 head(iteM$ites)
 ```
 
+```{r}
+#| label: ite-summary
+
+# Mean ITE ± SE per post-intervention period
+ite_summary <- as.data.frame(iteM$ites)[, c("time", "ite", "sd")]
+ite_summary <- aggregate(cbind(ite, sd) ~ time, data = ite_summary, FUN = mean)
+ite_summary$se <- ite_summary$sd / sqrt(nrow(ite_summary))
+
+cat(sprintf("%-8s %8s %8s %8s %8s\n", "Period", "ITE", "SD", "SE", "95% CI"))
+cat(strrep("-", 52), "\n")
+for (i in seq_len(nrow(ite_summary))) {
+  cat(sprintf("%-8d %8.3f %8.3f %8.3f  [%6.3f, %6.3f]\n",
+    ite_summary$time[i],
+    ite_summary$ite[i],
+    ite_summary$sd[i],
+    ite_summary$se[i],
+    ite_summary$ite[i] - 1.96 * ite_summary$se[i],
+    ite_summary$ite[i] + 1.96 * ite_summary$se[i]))
+}
+cat(strrep("-", 52), "\n")
+cat(sprintf("%-8s %8.3f\n", "Mean", mean(ite_summary$ite)))
+cat(sprintf("True effect per period: %.1f\n", true_effect))
+```
+
 ### ITE over time
 
 ```{r}
 #| label: fig-ite
-#| fig-cap: "Mean ITE per post-intervention period (bar) ± 1 SD (error bar). The true effect is −3."
+#| fig-cap: "Mean ITE per post-intervention period (bar) ± 1 SD (error bar). Red dashed line = true effect (−3); grey dashed line = mean estimated effect."
 
 # iteM$ites is grouped by (time, X); aggregate to population average for plotting
 ite_pop <- as.data.frame(iteM$ites)[, c("time", "ite", "sd")]
 ite_pop <- aggregate(cbind(ite, sd) ~ time, data = ite_pop, FUN = mean)
+mean_est <- mean(ite_pop$ite)
 
 ggplot(ite_pop, aes(x = time, y = ite)) +
   geom_col(fill = "steelblue", alpha = 0.8) +
   geom_errorbar(aes(ymin = ite - sd, ymax = ite + sd), width = 0.3) +
   geom_hline(yintercept = true_effect, linetype = "dashed",
              colour = "firebrick", linewidth = 0.8) +
-  annotate("text", x = max(ite_pop$time) - 0.5, y = true_effect + 0.25,
-           label = paste("True effect =", true_effect),
+  geom_hline(yintercept = mean_est, linetype = "dashed",
+             colour = "grey40", linewidth = 0.8) +
+  annotate("text", x = max(ite_pop$time) - 0.3, y = true_effect - 0.25,
+           label = paste("True =", true_effect),
            colour = "firebrick", hjust = 1, size = 3.5) +
+  annotate("text", x = max(ite_pop$time) - 0.3, y = mean_est + 0.25,
+           label = paste("Mean est. =", round(mean_est, 2)),
+           colour = "grey40", hjust = 1, size = 3.5) +
   labs(x = "Post-intervention period",
-       y = "ITE (predicted − observed)") +
+       y = "ITE (observed \u2212 counterfactual)") +
   theme_classic()
 ```
 
