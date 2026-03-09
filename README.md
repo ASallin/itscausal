@@ -1,347 +1,189 @@
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
+
+<!-- README.md is generated from README.qmd. Please edit that file -->
 
 # itscausal
 
 <!-- badges: start -->
+
 <!-- badges: end -->
 
-Welcome to the package page of itscausal. The goal of itscausal is to
-flexibly estimate interrupted time series With causal machine learning.
+`itscausal` estimates the causal effect of a policy intervention on a
+panel of units observed over time — an **interrupted time series (ITS)**
+design.
+
+The key idea: train ML models on the **pre-intervention** window to
+predict each unit’s counterfactual outcome (what would have happened
+without treatment). The individual treatment effect (ITE) is the
+difference between observed and counterfactual outcomes:
+
+$$\text{ITE}_{it} = y_{it} - \hat{y}_{it}^{(0)}, \quad t > 0$$
 
 ## Installation
 
-You can install the development version of itscausal from
-[GitHub](https://github.com/) with:
-
 ``` r
 # install.packages("devtools")
-devtools::install_github("ASallin/itscausal", force = TRUE)
+devtools::install_github("ASallin/itscausal")
 ```
 
-## Example
-
-This is a basic example which shows you how to solve a common problem:
+## Workflow
 
 ``` r
-library(itscausal)
+devtools::load_all(quiet = TRUE)
 library(data.table)
-library(dplyr)
 library(ggplot2)
 
-set.seed(234493)
+set.seed(20240101)
+```
 
+### 1. Simulate a panel
 
-ar_process <- function(n, phi = 0.7, sigma = 1) {
-  e <- rnorm(n, 0, sigma)
-  x <- numeric(n)
-  x[1] <- e[1]
-  for (t in 2:n) {
-    x[t] <- phi * x[t - 1] + e[t]
-  }
-  return(x)
+60 individuals × 72 months; intervention at month 60; true level-shift =
+**−3**.
+
+``` r
+n_id        <- 60
+n_time      <- 72
+INDEX       <- 60L
+true_effect <- -3
+
+ar1 <- function(n, phi = 0.6, sigma = 1) {
+  e <- rnorm(n, 0, sigma); x <- numeric(n); x[1] <- e[1]
+  for (t in 2:n) x[t] <- phi * x[t - 1] + e[t]; x
 }
 
-arma_process <- function(n, ar = 0.7, ma = 0.3, sigma = 1) {
-  e <- rnorm(n, 0, sigma)
-  x <- numeric(n)
-  x[1] <- e[1]
-  for (t in 2:n) {
-    x[t] <- ar * x[t - 1] + e[t] + ma * e[t - 1]
-  }
-  return(x)
-}
+X     <- sample(c(0, 1), n_id, replace = TRUE)
+id_fx <- rnorm(n_id, 0, 3)
 
-heteroskedastic_errors <- function(n, base_sigma = 1, increase_rate = 0.1) {
-  sigma <- base_sigma + increase_rate * (1:n)
-  return(rnorm(n, 0, sigma))
-}
-
-set.seed(23493)
-
-# Generate simulated dataset
-n_time <- 100 # Number of time points
-intervention <- round(0.8 * n_time) # Time point of intervention
-n_id <- 60 # Number of unique individuals
-constant <- 1
-
-X <- sample(c(0, 1), n_id, T)
-param_timetrend <- 0.07
-param_dummyintervention <- -0.15
-param_slopeintervention <- -0.10
-
-# Seasonality
-season_effect <- c(
-  0,
-  rnorm(2, 0, 4),
-  rnorm(4, -2, 0.5),
-  rnorm(3, 0, 1)
+df <- data.table(
+  ID    = rep(seq_len(n_id), each = n_time),
+  time  = rep(seq_len(n_time), n_id),
+  X     = rep(X, each = n_time),
+  id_fx = rep(id_fx, each = n_time)
 )
 
-# Simulate an ITS
-df <- data.frame(
-  ID = rep(seq(1:n_id), each = n_time),
-  X = rep(X, each = n_time),
-  season = rep(
-    c(rep(1:12, n_time %/% 12), (1:12)[1:(n_time %% 12)]),
-    n_id
-  ),
-  id.effect = rep(rnorm(n_id, 0, 10), each = n_time),
-  season_effect = rep(season_effect, times = n_time),
-  post = rep(c(rep(0, intervention), rep(1, 0.2 * n_time)), n_id),
-  time = rep((1:n_time) - intervention, n_id),
-  error_simple = rnorm(n_time * n_id, 0, 2),
-  error_ar = unlist(replicate(n_id, ar_process(n_time, sigma = 2), simplify = FALSE)),
-  error_arma = unlist(replicate(n_id, arma_process(n_time), simplify = FALSE)),
-  error_heteroskedastic = unlist(replicate(n_id, heteroskedastic_errors(n_time), simplify = FALSE))
+season_coefs <- c(0, 1.5, 2.8, 3.1, 2.4, 1.2, -0.5, -1.8, -2.1, -1.4, 0, 0.3)
+df[, month  := ((time - 1) %% 12) + 1]
+df[, year   := ((time - 1) %/% 12) + 1]
+df[, season := season_coefs[month]]
+df[, error  := unlist(replicate(n_id, ar1(n_time, phi = 0.5, sigma = 1.5),
+                                simplify = FALSE))]
+df[, post   := as.integer(time >= INDEX)]
+df[, y      := 2 + 0.05 * time + 0.8 * X + season + id_fx +
+               true_effect * post + error]
+```
+
+<div id="fig-rawdata">
+
+<img src="man/figures/README-fig-rawdata-1.png" id="fig-rawdata"
+style="width:100.0%" />
+
+Figure 1
+
+</div>
+
+### 2. Forecast the counterfactual — comparing models
+
+`forecastITS()` trains an ensemble of ML models on each cross-validation
+fold and forecasts the post-intervention counterfactual. Here we compare
+three specifications: linear model only, XGBoost only, and the ensemble
+of both.
+
+``` r
+fore_lm <- forecastITS(
+  data            = copy(df),
+  time            = "time",
+  key             = "ID",
+  y               = "y",
+  INDEX           = INDEX,
+  WINDOW          = 12L,
+  STEPS           = 6L,
+  covariates_time = c("month", "year"),
+  covariates_fix  = "X",
+  method          = c("lm"),
+  K               = 5L
 )
 
-df$abs_time <- df$time + abs(min(df$time))
-
-# Generate y with different error structures
-df$y_simple <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_simple
+fore_xgb <- forecastITS(
+  data            = copy(df),
+  time            = "time",
+  key             = "ID",
+  y               = "y",
+  INDEX           = INDEX,
+  WINDOW          = 12L,
+  STEPS           = 6L,
+  covariates_time = c("month", "year"),
+  covariates_fix  = "X",
+  method          = c("xgboost"),
+  K               = 5L
 )
 
-df$y_ar <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_ar
+fore_ens <- forecastITS(
+  data            = copy(df),
+  time            = "time",
+  key             = "ID",
+  y               = "y",
+  INDEX           = INDEX,
+  WINDOW          = 12L,
+  STEPS           = 6L,
+  covariates_time = c("month", "year"),
+  covariates_fix  = "X",
+  method          = c("lm", "xgboost"),
+  K               = 5L
 )
 
-df$y_arma <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_arma
-)
+# Ensemble RMSE weights
+round(fore_ens$RMSEweights, 3)
+#>      lm xgboost 
+#>       1       0
+```
 
-df$y_heteroskedastic <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_heteroskedastic
-)
+<div id="fig-forecast">
 
-df <- data.table(df)
+<img src="man/figures/README-fig-forecast-1.png" id="fig-forecast"
+style="width:100.0%" />
 
+Figure 2
 
-# Simulate y with seasonal effects
-df <- df[
-  , `:=`(
-    model = constant
-    + param_timetrend * (abs_time)
-      + season_effect
-      + 0.2 * X,
-    forecast = constant
-    + param_timetrend * abs_time
-      + param_dummyintervention * post
-      + param_slopeintervention * abs_time * post
-      + season_effect
-      + 0.2 * X
-      + 0.03 * X * param_slopeintervention
+</div>
+
+### 3. Individual & average treatment effects
+
+``` r
+ite_lm  <- iteITS(fore_lm)
+ite_xgb <- iteITS(fore_xgb)
+ite_ens <- iteITS(fore_ens)
+
+n_post <- max(ite_ens$ites$time)
+
+summarise_tate <- function(fore, ite, label) {
+  ate <- ateITS(fore, ite, n.periods = n_post)
+  data.frame(
+    Model = label,
+    TATE = round(ate$TATE$pred$ite, 3),
+    SD = round(ate$TATE$sd$sd, 3)
   )
-]
-```
+}
 
-    #> `summarise()` has grouped output by 'time'. You can override using the
-    #> `.groups` argument.
-    #> Warning: Using `size` aesthetic for lines was deprecated in ggplot2 3.4.0.
-    #> ℹ Please use `linewidth` instead.
-    #> This warning is displayed once every 8 hours.
-    #> Call `lifecycle::last_lifecycle_warnings()` to see where this warning was
-    #> generated.
-
-<img src="man/figures/README-graph-1.png" width="100%" />
-
-We can visualize the its as follows:
-
-``` r
-# Compute effects
-df <- df[, ite := ifelse(post == 0, NA, model - forecast)]
-ate5 <- mean(df[time < 6 & post == 1, ]$ite)
-ate1 <- mean(df[time < 2 & post == 1, ]$ite)
-
-print(ate5)
-#> [1] 8.3518
-print(ate1)
-#> [1] 8.1518
-```
-
-We can reproduce these results using the `itscausal` package.
-
-``` r
-window <- 36L
-
-fore_y_simple <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_simple",
-  method = c("lm", "xgboost"),
-  K = 5
+results <- rbind(
+  summarise_tate(fore_lm,  ite_lm,  "lm"),
+  summarise_tate(fore_xgb, ite_xgb, "xgboost"),
+  summarise_tate(fore_ens, ite_ens, "ensemble")
 )
-#> Df has 99time periods.
-#> The intervention happens at period 0 (index). 
-#> The fit will be tested on 5 periods (steps) before the intervention.
-#> The time window to train the models has36 periods (window).
-#> The prediction space for forecasting is20 periods.
-#> 1...
-#> 2...
-#> 3...
-#> 4...
-#> 5...
-
-fore_y_ar <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_ar",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-#> Df has 99time periods.
-#> The intervention happens at period 0 (index). 
-#> The fit will be tested on 5 periods (steps) before the intervention.
-#> The time window to train the models has36 periods (window).
-#> The prediction space for forecasting is20 periods.
-#> 1...
-#> 2...
-#> 3...
-#> 4...
-#> 5...
-
-fore_y_arma <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_arma",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-#> Df has 99time periods.
-#> The intervention happens at period 0 (index). 
-#> The fit will be tested on 5 periods (steps) before the intervention.
-#> The time window to train the models has36 periods (window).
-#> The prediction space for forecasting is20 periods.
-#> 1...
-#> 2...
-#> 3...
-#> 4...
-#> 5...
-
-fore_y_heteroskedastic <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_heteroskedastic",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-#> Df has 99time periods.
-#> The intervention happens at period 0 (index). 
-#> The fit will be tested on 5 periods (steps) before the intervention.
-#> The time window to train the models has36 periods (window).
-#> The prediction space for forecasting is20 periods.
-#> 1...
-#> 2...
-#> 3...
-#> 4...
-#> 5...
-
-dfFinal_simple <- fore_y_simple$out
-dfFinal_ar <- fore_y_ar$out
-dfFinal_arma <- fore_y_arma$out
-dfFinal_heteroskedastic <- fore_y_heteroskedastic$out
+results$lower <- round(results$TATE - 1.96 * results$SD, 3)
+results$upper <- round(results$TATE + 1.96 * results$SD, 3)
+results
+#>      Model   TATE    SD  lower  upper
+#> 1       lm -3.315 0.615 -4.520 -2.110
+#> 2  xgboost -2.560 0.680 -3.893 -1.227
+#> 3 ensemble -3.234 0.599 -4.408 -2.060
 ```
 
-    #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 74 rows containing missing values or values outside the scale range
-    #> (`geom_line()`).
+<div id="fig-ite">
 
-<img src="man/figures/README-graphML-1.png" width="100%" />
+<img src="man/figures/README-fig-ite-1.png" id="fig-ite"
+style="width:100.0%" />
 
-    #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 74 rows containing missing values or values outside the scale range
-    #> (`geom_line()`).
+Figure 3
 
-<img src="man/figures/README-graphML-2.png" width="100%" />
-
-    #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 74 rows containing missing values or values outside the scale range
-    #> (`geom_line()`).
-
-<img src="man/figures/README-graphML-3.png" width="100%" />
-
-    #> Joining with `by = join_by(ID, time)`
-    #> Warning: Removed 74 rows containing missing values or values outside the scale range
-    #> (`geom_line()`).
-
-<img src="man/figures/README-graphML-4.png" width="100%" />
-
-## Compute the instantaneous treatment effect for the whole population
-
-``` r
-iteM <- iteITS(forecast.object = fore_y_simple)
-
-InstAte <- ateITS(fore_y_simple, ite.object = iteM)
-InstATE <- InstAte$InstATE
-
-ggplot(InstATE$pred, aes(x = time, y = ite)) +
-  geom_bar(stat = "identity")
-```
-
-<img src="man/figures/README-InstATE-1.png" width="100%" />
-
-## Per groupdf
-
-``` r
-ate1its <- ateITS(fore_y_simple, iteM, n.periods = 1)
-paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
-#> [1] "mean =  8.868 ; sd =  0.225"
-
-ate5its <- ateITS(fore_y_simple, iteM, n.periods = 5)
-paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
-#> [1] "mean =  8.353 ; sd =  0.757"
-
-ate1
-#> [1] 8.1518
-ate5
-#> [1] 8.3518
-```
+</div>

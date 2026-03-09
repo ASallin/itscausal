@@ -1,10 +1,20 @@
 ---
-output: github_document
+format: gfm
+execute:
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    fig.path: "man/figures/README-"
+    out.width: "100%"
+    collapse: true
+    comment: "#>"
 ---
 
-<!-- README.md is generated from README.Rmd. Please edit that file -->
+<!-- README.md is generated from README.qmd. Please edit that file -->
 
-```{r, include = FALSE}
+```{r}
+#| include: false
 knitr::opts_chunk$set(
   collapse = TRUE,
   comment = "#>",
@@ -38,7 +48,7 @@ devtools::install_github("ASallin/itscausal")
 ## Workflow
 
 ```{r setup, message=FALSE, warning=FALSE}
-library(itscausal)
+devtools::load_all(quiet = TRUE)
 library(data.table)
 library(ggplot2)
 
@@ -105,7 +115,7 @@ ensemble of both.
 
 ```{r forecast, message=FALSE, warning=FALSE}
 fore_lm <- forecastITS(
-  data            = df,
+  data            = copy(df),
   time            = "time",
   key             = "ID",
   y               = "y",
@@ -119,7 +129,7 @@ fore_lm <- forecastITS(
 )
 
 fore_xgb <- forecastITS(
-  data            = df,
+  data            = copy(df),
   time            = "time",
   key             = "ID",
   y               = "y",
@@ -133,7 +143,7 @@ fore_xgb <- forecastITS(
 )
 
 fore_ens <- forecastITS(
-  data            = df,
+  data            = copy(df),
   time            = "time",
   key             = "ID",
   y               = "y",
@@ -192,9 +202,9 @@ n_post <- max(ite_ens$ites$time)
 summarise_tate <- function(fore, ite, label) {
   ate <- ateITS(fore, ite, n.periods = n_post)
   data.frame(
-    Model  = label,
-    TATE   = round(ate$TATE$pred$ite, 3),
-    SD     = round(ate$TATE$sd$sd,    3)
+    Model = label,
+    TATE = round(ate$TATE$pred$ite, 3),
+    SD = round(ate$TATE$sd$sd, 3)
   )
 }
 
