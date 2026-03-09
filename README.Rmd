@@ -11,27 +11,6 @@ knitr::opts_chunk$set(
   fig.path = "man/figures/README-",
   out.width = "100%"
 )
-
-
-# Generate AR Process
-# Generate the time series
-ar_process <- function(n_time, ar_params) {
-  errors <- rnorm(n_time, 0, 1) # Generate the random errors
-  simulated_data <- numeric(n_time)
-
-  for (i in length(ar_params):n_time) {
-    simulated_data[i] <- sum(ar_params * simulated_data[(i - length(ar_params)):(i - 1)]) + errors[i]
-  }
-
-  simulated_data
-}
-
-ar_params <- c(
-  0.5, 0.3, 0.001, 0.2,
-  0, -.050, -.020, 0.001, -0.02,
-  0, 0.03, 0.15
-) # Autocorrelation parameters with order p
-order <- 12 # Order of the autocorrelation
 ```
 
 # itscausal
@@ -39,383 +18,145 @@ order <- 12 # Order of the autocorrelation
 <!-- badges: start -->
 <!-- badges: end -->
 
-Welcome to the package page of itscausal. The goal of itscausal is to flexibly estimate
-interrupted time series With causal machine learning.
+`itscausal` estimates the causal effect of a policy intervention on a panel of
+units observed over time — an **interrupted time series (ITS)** design.
+
+The key idea: train ML models on the **pre-intervention** window to predict each
+unit's counterfactual outcome (what would have happened without treatment). The
+individual treatment effect (ITE) is the difference between observed and
+counterfactual outcomes.
 
 ## Installation
 
-You can install the development version of itscausal from [GitHub](https://github.com/) with:
-
-``` r
+```r
 # install.packages("devtools")
-devtools::install_github("ASallin/itscausal", force = TRUE)
+devtools::install_github("ASallin/itscausal")
 ```
 
-## Example
+## Workflow
 
-This is a basic example which shows you how to solve a common problem:
-
-```{r simulation, echo=TRUE, message=FALSE, warning=FALSE}
+```{r setup, message=FALSE, warning=FALSE}
 library(itscausal)
 library(data.table)
-library(dplyr)
 library(ggplot2)
 
-set.seed(234493)
+set.seed(20240101)
+```
 
+### 1. Simulate a panel
 
-ar_process <- function(n, phi = 0.7, sigma = 1) {
-  e <- rnorm(n, 0, sigma)
-  x <- numeric(n)
-  x[1] <- e[1]
-  for (t in 2:n) {
-    x[t] <- phi * x[t - 1] + e[t]
-  }
-  return(x)
+60 individuals × 72 months; intervention at month 60; true level-shift effect = **−3**.
+
+```{r simulate}
+n_id        <- 60
+n_time      <- 72
+INDEX       <- 60L
+true_effect <- -3
+
+ar1 <- function(n, phi = 0.6, sigma = 1) {
+  e <- rnorm(n, 0, sigma); x <- numeric(n); x[1] <- e[1]
+  for (t in 2:n) x[t] <- phi * x[t - 1] + e[t]; x
 }
 
-arma_process <- function(n, ar = 0.7, ma = 0.3, sigma = 1) {
-  e <- rnorm(n, 0, sigma)
-  x <- numeric(n)
-  x[1] <- e[1]
-  for (t in 2:n) {
-    x[t] <- ar * x[t - 1] + e[t] + ma * e[t - 1]
-  }
-  return(x)
-}
+X     <- sample(c(0, 1), n_id, replace = TRUE)
+id_fx <- rnorm(n_id, 0, 3)
 
-heteroskedastic_errors <- function(n, base_sigma = 1, increase_rate = 0.1) {
-  sigma <- base_sigma + increase_rate * (1:n)
-  return(rnorm(n, 0, sigma))
-}
-
-set.seed(23493)
-
-# Generate simulated dataset
-n_time <- 100 # Number of time points
-intervention <- round(0.8 * n_time) # Time point of intervention
-n_id <- 60 # Number of unique individuals
-constant <- 1
-
-X <- sample(c(0, 1), n_id, T)
-param_timetrend <- 0.07
-param_dummyintervention <- -0.15
-param_slopeintervention <- -0.10
-
-# Seasonality
-season_effect <- c(
-  0,
-  rnorm(2, 0, 4),
-  rnorm(4, -2, 0.5),
-  rnorm(3, 0, 1)
+df <- data.table(
+  ID    = rep(seq_len(n_id), each = n_time),
+  time  = rep(seq_len(n_time), n_id),
+  X     = rep(X, each = n_time),
+  id_fx = rep(id_fx, each = n_time)
 )
 
-# Simulate an ITS
-df <- data.frame(
-  ID = rep(seq(1:n_id), each = n_time),
-  X = rep(X, each = n_time),
-  season = rep(
-    c(rep(1:12, n_time %/% 12), (1:12)[1:(n_time %% 12)]),
-    n_id
-  ),
-  id.effect = rep(rnorm(n_id, 0, 10), each = n_time),
-  season_effect = rep(season_effect, times = n_time),
-  post = rep(c(rep(0, intervention), rep(1, 0.2 * n_time)), n_id),
-  time = rep((1:n_time) - intervention, n_id),
-  error_simple = rnorm(n_time * n_id, 0, 2),
-  error_ar = unlist(replicate(n_id, ar_process(n_time, sigma = 2), simplify = FALSE)),
-  error_arma = unlist(replicate(n_id, arma_process(n_time), simplify = FALSE)),
-  error_heteroskedastic = unlist(replicate(n_id, heteroskedastic_errors(n_time), simplify = FALSE))
-)
-
-df$abs_time <- df$time + abs(min(df$time))
-
-# Generate y with different error structures
-df$y_simple <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_simple
-)
-
-df$y_ar <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_ar
-)
-
-df$y_arma <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_arma
-)
-
-df$y_heteroskedastic <- with(
-  df,
-  constant + param_timetrend * abs_time
-    + (param_dummyintervention * post)
-    + param_slopeintervention * post * abs_time
-    + 0.2 * X
-    + season_effect
-    + error_heteroskedastic
-)
-
-df <- data.table(df)
-
-
-# Simulate y with seasonal effects
-df <- df[
-  , `:=`(
-    model = constant
-    + param_timetrend * (abs_time)
-      + season_effect
-      + 0.2 * X,
-    forecast = constant
-    + param_timetrend * abs_time
-      + param_dummyintervention * post
-      + param_slopeintervention * abs_time * post
-      + season_effect
-      + 0.2 * X
-      + 0.03 * X * param_slopeintervention
-  )
-]
+season_coefs <- c(0, 1.5, 2.8, 3.1, 2.4, 1.2, -0.5, -1.8, -2.1, -1.4, 0, 0.3)
+df[, month  := ((time - 1) %% 12) + 1]
+df[, season := season_coefs[month]]
+df[, error  := unlist(replicate(n_id, ar1(n_time, phi = 0.5, sigma = 1.5),
+                                simplify = FALSE))]
+df[, post   := as.integer(time >= INDEX)]
+df[, y      := 2 + 0.05 * time + 0.8 * X + season + id_fx +
+               true_effect * post + error]
+df[, time_c := time - INDEX]
 ```
 
-```{r graph, echo = FALSE}
-# Graph
-df %>%
-  group_by(time, post) %>%
-  summarise(
-    y_simple = mean(y_simple),
-    y_ar = mean(y_ar),
-    y_arma = mean(y_arma),
-    y_heteroskedastic = mean(y_heteroskedastic),
-    model = mean(model),
-    forecast = mean(forecast)
-  ) %>%
-  # mutate(y = ifelse(post == 1, NA, y)) |>
-  ggplot(aes(y = y_simple, x = time)) +
-  geom_line(col = "#1c1cdd") +
-  geom_line(aes(y = model), color = "#fa1420") +
-  geom_line(aes(y = forecast), color = "#066613", size = 1) +
-  geom_line(aes(y = y_ar), color = "#030366") +
-  geom_line(aes(y = y_arma), color = "#ad5a5e66") +
-  geom_line(aes(y = y_heteroskedastic), color = "#bb49be66") +
-  labs(
-    x = "Time to/from the intervention",
-    y = "Average y per time period"
-  ) +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
+### 2. Forecast the counterfactual
+
+```{r forecast, message=FALSE, warning=FALSE}
+fore <- forecastITS(
+  data            = df,
+  time            = "time_c",
+  INDEX           = 0L,
+  WINDOW          = 12L,
+  STEPS           = 3,
+  covariates_time = "season",
+  covariates_fix  = "X",
+  key             = "ID",
+  y               = "y",
+  method          = c("lm", "xgboost"),
+  K               = 5
+)
+```
+
+```{r fig-forecast, echo=FALSE}
+pred_df <- do.call(rbind, lapply(fore$forecast, function(x) x$y_hat))
+pred_long <- data.table::melt(data.table(pred_df), id.vars = c("ID", "time"),
+                               variable.name = "step", value.name = "y_hat")
+pred_long <- pred_long[!is.na(y_hat)]
+pred_agg  <- pred_long[, .(y_hat = mean(y_hat)), by = time]
+
+obs_agg <- df[, .(y = mean(y)), by = .(time = time_c)]
+
+ggplot(obs_agg, aes(x = time, y = y)) +
+  geom_line(colour = "steelblue") +
+  geom_line(data = pred_agg[time > 0], aes(y = y_hat),
+            colour = "firebrick", linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  labs(x = "Time relative to intervention",
+       y = "Mean outcome",
+       caption = "Blue = observed; red dashed = counterfactual forecast") +
   theme_classic()
 ```
 
+### 3. Individual treatment effects
 
-We can visualize the its as follows:
-
-```{r}
-# Compute effects
-df <- df[, ite := ifelse(post == 0, NA, model - forecast)]
-ate5 <- mean(df[time < 6 & post == 1, ]$ite)
-ate1 <- mean(df[time < 2 & post == 1, ]$ite)
-
-print(ate5)
-print(ate1)
+```{r ite}
+iteM <- iteITS(forecast.object = fore)
 ```
 
+### 4. Average treatment effects
 
-We can reproduce these results using the `itscausal` package.
-
-```{r itscausal}
-window <- 36L
-
-fore_y_simple <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_simple",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-
-fore_y_ar <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_ar",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-
-fore_y_arma <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_arma",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-
-fore_y_heteroskedastic <- forecastITS(
-  data = df,
-  time = "time",
-  INDEX = 0L,
-  WINDOW = window,
-  STEPS = 5,
-  covariates_time = c("season"),
-  covariates_fix = c("X"),
-  key = "ID",
-  y = "y_heteroskedastic",
-  method = c("lm", "xgboost"),
-  K = 5
-)
-
-dfFinal_simple <- fore_y_simple$out
-dfFinal_ar <- fore_y_ar$out
-dfFinal_arma <- fore_y_arma$out
-dfFinal_heteroskedastic <- fore_y_heteroskedastic$out
-```
-
-
-```{r graphML, echo = FALSE}
-dfFinal_simple %>%
-  right_join(df) %>%
-  group_by(time) %>%
-  summarise(y = mean(y_simple), y.pred = mean(y_simple_hat)) %>%
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  geom_line(
-    aes(
-      x = time,
-      y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season_effect
-    ),
-    col = "#e95a08", linetype = 3, size = 1
-  ) +
-  labs(
-    x = "Time to/from the intervention",
-    y = "Average y per time period"
-  ) +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
-  theme_classic()
-
-
-dfFinal_ar %>%
-  right_join(df) %>%
-  group_by(time) %>%
-  summarise(y = mean(y_ar), y.pred = mean(y_ar_hat)) %>%
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  geom_line(
-    aes(
-      x = time,
-      y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season_effect
-    ),
-    col = "#e95a08", linetype = 3, size = 1
-  ) +
-  labs(
-    x = "Time to/from the intervention",
-    y = "Average y per time period"
-  ) +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
-  theme_classic()
-
-
-dfFinal_arma %>%
-  right_join(df) %>%
-  group_by(time) %>%
-  summarise(y = mean(y_arma), y.pred = mean(y_arma_hat)) %>%
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  geom_line(
-    aes(
-      x = time,
-      y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season_effect
-    ),
-    col = "#e95a08", linetype = 3, size = 1
-  ) +
-  labs(
-    x = "Time to/from the intervention",
-    y = "Average y per time period"
-  ) +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
-  theme_classic()
-
-dfFinal_heteroskedastic %>%
-  right_join(df) %>%
-  group_by(time) %>%
-  summarise(y = mean(y_heteroskedastic), y.pred = mean(y_heteroskedastic_hat)) %>%
-  ggplot(aes(y = y, x = time)) +
-  geom_line() +
-  geom_line(aes(y = y.pred, x = time), color = "red") +
-  geom_line(
-    aes(
-      x = time,
-      y = constant + param_timetrend * (time + abs(min(df$time)))
-        + season_effect
-    ),
-    col = "#e95a08", linetype = 3, size = 1
-  ) +
-  labs(
-    x = "Time to/from the intervention",
-    y = "Average y per time period"
-  ) +
-  geom_vline(xintercept = 0, color = "red", linetype = 2) +
-  theme_classic()
-```
-
-
-
-## Compute the instantaneous treatment effect for the whole population
-```{r InstATE}
-iteM <- iteITS(forecast.object = fore_y_simple)
-
-InstAte <- ateITS(fore_y_simple, ite.object = iteM)
-InstATE <- InstAte$InstATE
-
-ggplot(InstATE$pred, aes(x = time, y = ite)) +
-  geom_bar(stat = "identity")
-```
-
-
-## Per groupdf
 ```{r ate}
-ate1its <- ateITS(fore_y_simple, iteM, n.periods = 1)
-paste("mean = ", round(ate1its$TATE$pred$ite, 3), "; sd = ", round(ate1its$TATE$sd$sd, 3))
+n_post    <- max(iteM$ites$time)
+ate_total <- ateITS(fore, iteM, n.periods = n_post)
 
-ate5its <- ateITS(fore_y_simple, iteM, n.periods = 5)
-paste("mean = ", round(ate5its$TATE$pred$ite, 3), "; sd = ", round(ate5its$TATE$sd$sd, 3))
+cat(sprintf(
+  "TATE over %d periods:  %.3f  (SD = %.3f)\nTrue effect:           %.1f\n",
+  n_post,
+  ate_total$TATE$pred$ite,
+  ate_total$TATE$sd$sd,
+  true_effect
+))
+```
 
-ate1
-ate5
+```{r fig-ite, echo=FALSE}
+ite_pop  <- as.data.frame(iteM$ites)[, c("time", "ite", "sd")]
+ite_pop  <- aggregate(cbind(ite, sd) ~ time, data = ite_pop, FUN = mean)
+mean_est <- mean(ite_pop$ite)
+
+ggplot(ite_pop, aes(x = time, y = ite)) +
+  geom_col(fill = "steelblue", alpha = 0.8) +
+  geom_errorbar(aes(ymin = ite - sd, ymax = ite + sd), width = 0.3) +
+  geom_hline(yintercept = true_effect, linetype = "dashed",
+             colour = "firebrick", linewidth = 0.8) +
+  geom_hline(yintercept = mean_est, linetype = "dashed",
+             colour = "grey40", linewidth = 0.8) +
+  annotate("text", x = max(ite_pop$time) - 0.3, y = true_effect - 0.25,
+           label = paste("True =", true_effect),
+           colour = "firebrick", hjust = 1, size = 3.5) +
+  annotate("text", x = max(ite_pop$time) - 0.3, y = mean_est + 0.25,
+           label = paste("Mean est. =", round(mean_est, 2)),
+           colour = "grey40", hjust = 1, size = 3.5) +
+  labs(x = "Post-intervention period",
+       y = "ITE (observed \u2212 counterfactual)") +
+  theme_classic()
 ```
