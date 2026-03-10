@@ -52,16 +52,16 @@ devtools::load_all(quiet = TRUE)
 library(data.table)
 library(ggplot2)
 
-set.seed(20240101)
+set.seed(20260101)
 ```
 
 ### 1. Simulate a panel
 
-60 individuals × 72 months; intervention at month 60; true level-shift = **−3**.
+60 individuals × 84 months; intervention at month 60; 24 post-intervention periods; true level-shift = **−3**.
 
 ```{r simulate}
 n_id        <- 60
-n_time      <- 72
+n_time      <- 84
 INDEX       <- 60L
 true_effect <- -3
 
@@ -114,6 +114,8 @@ Here we compare three specifications: linear model only, XGBoost only, and the
 ensemble of both.
 
 ```{r forecast, message=FALSE, warning=FALSE}
+n_post <- n_time - INDEX   # 24 post-intervention periods
+
 fore_lm <- forecastITS(
   data            = copy(df),
   time            = "time",
@@ -122,6 +124,7 @@ fore_lm <- forecastITS(
   INDEX           = INDEX,
   WINDOW          = 12L,
   STEPS           = 6L,
+  FORECASTUNITS   = n_post,
   covariates_time = c("month", "year"),
   covariates_fix  = "X",
   method          = c("lm"),
@@ -136,6 +139,7 @@ fore_xgb <- forecastITS(
   INDEX           = INDEX,
   WINDOW          = 12L,
   STEPS           = 6L,
+  FORECASTUNITS   = n_post,
   covariates_time = c("month", "year"),
   covariates_fix  = "X",
   method          = c("xgboost"),
@@ -150,9 +154,10 @@ fore_ens <- forecastITS(
   INDEX           = INDEX,
   WINDOW          = 12L,
   STEPS           = 6L,
+  FORECASTUNITS   = n_post,
   covariates_time = c("month", "year"),
   covariates_fix  = "X",
-  method          = c("lm", "xgboost"),
+  method          = c("lm", "xgboost", "rf"),
   K               = 5L
 )
 
@@ -176,6 +181,7 @@ preds <- rbind(
 
 obs <- df[, .(y = mean(y)), by = .(time_c = time - INDEX)]
 preds_avg <- preds[, .(y_hat = mean(y_hat, na.rm = TRUE)), by = .(time_c, model)]
+preds_avg <- na.omit(preds_avg)   # drop periods where all folds returned NA
 
 ggplot(obs, aes(x = time_c, y = y)) +
   geom_line(colour = "black", linewidth = 0.7) +
